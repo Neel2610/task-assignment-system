@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import CreateProject from './pages/CreateProject';
 import CreateTask from './pages/CreateTask';
 import KanbanBoard from './pages/KanbanBoard';
+import AddMember from './pages/AddMember';
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
         <Route path="/create-project" element={<CreateProject />} />
         <Route path="/create-task" element={<CreateTask />} />
         <Route path="/kanban" element={<KanbanBoard />} />
+        <Route path="/add-member" element={<AddMember />} />
       </Routes>
     </BrowserRouter>
   );

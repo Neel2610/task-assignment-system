@@ -19,13 +19,19 @@ export default function Signup() {
     setError(null);
     setSuccess(null);
 
-    if (password !== confirmPassword) {
-      setError('Passwords do not match');
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!email || !emailRegex.test(email)) {
+      setError('Please enter a valid email address.');
       return;
     }
 
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters long');
+    if (!password) {
+      setError('Password cannot be empty.');
+      return;
+    }
+
+    if (password !== confirmPassword) {
+      setError('Passwords do not match.');
       return;
     }
 
@@ -35,15 +41,27 @@ export default function Signup() {
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: {
-          data: {
-            full_name: fullName,
-          },
-        },
       });
 
       if (signUpError) {
         throw signUpError;
+      }
+
+      if (data?.user) {
+        const { error: userInsertError } = await supabase
+          .from('users')
+          .insert([
+            {
+              id: data.user.id,
+              full_name: fullName,
+              email: email,
+              role: 'member',
+            },
+          ]);
+
+        if (userInsertError) {
+          throw userInsertError;
+        }
       }
 
       setSuccess('Signup successful! Redirecting to login...');
@@ -52,7 +70,7 @@ export default function Signup() {
         navigate('/login');
       }, 2000);
     } catch (err) {
-      setError(err.message || 'An error occurred during signup');
+      setError(err.message || 'An error occurred during signup.');
     } finally {
       setLoading(false);
     }
@@ -60,7 +78,6 @@ export default function Signup() {
 
   return (
     <div className="min-h-screen w-full flex flex-col items-center justify-center bg-slate-900 px-4 py-12 text-left">
-      {/* App Branding Heading */}
       <div className="text-center mb-8">
         <h1 className="text-4xl font-extrabold tracking-tight text-white flex items-center justify-center gap-2">
           <span className="text-blue-500">⚡</span> TaskFlow
@@ -70,8 +87,7 @@ export default function Signup() {
         </p>
       </div>
 
-      {/* Centered White Card */}
-      <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-8 border border-slate-100">
+      <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-10 border border-slate-100">
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-slate-900 tracking-tight">
             Create an account
@@ -81,7 +97,6 @@ export default function Signup() {
           </p>
         </div>
 
-        {/* Error Alert Box */}
         {error && (
           <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200 flex items-start space-x-3">
             <span className="text-red-600 font-bold text-base leading-none">!</span>
@@ -91,7 +106,6 @@ export default function Signup() {
           </div>
         )}
 
-        {/* Success Alert Box */}
         {success && (
           <div className="mb-6 p-4 rounded-lg bg-emerald-50 border border-emerald-200 flex items-start space-x-3">
             <span className="text-emerald-600 font-bold text-base leading-none">✓</span>
@@ -101,7 +115,6 @@ export default function Signup() {
           </div>
         )}
 
-        {/* Form */}
         <form className="space-y-4" onSubmit={handleSignup}>
           <div>
             <label
@@ -116,7 +129,7 @@ export default function Signup() {
               required
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+              className="w-full px-3.5 py-2.5 bg-gray-100 border border-slate-300 rounded-lg text-gray-800 placeholder-slate-400 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
               placeholder="John Doe"
             />
           </div>
@@ -134,7 +147,7 @@ export default function Signup() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+              className="w-full px-3.5 py-2.5 bg-gray-100 border border-slate-300 rounded-lg text-gray-800 placeholder-slate-400 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
               placeholder="name@company.com"
             />
           </div>
@@ -152,7 +165,7 @@ export default function Signup() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+              className="w-full px-3.5 py-2.5 bg-gray-100 border border-slate-300 rounded-lg text-gray-800 placeholder-slate-400 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
               placeholder="••••••••"
             />
           </div>
@@ -170,7 +183,7 @@ export default function Signup() {
               required
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="w-full px-3.5 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
+              className="w-full px-3.5 py-2.5 bg-gray-100 border border-slate-300 rounded-lg text-gray-800 placeholder-slate-400 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
               placeholder="••••••••"
             />
           </div>
@@ -193,7 +206,6 @@ export default function Signup() {
           </div>
         </form>
 
-        {/* Footer Link */}
         <div className="mt-8 pt-6 border-t border-slate-100 text-center text-sm text-slate-600">
           Already have an account?{' '}
           <Link
@@ -206,4 +218,4 @@ export default function Signup() {
       </div>
     </div>
   );
-}
+}

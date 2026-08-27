@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { supabase } from '../supabase';
 import Sidebar from '../components/Sidebar';
@@ -25,6 +26,7 @@ const COLUMNS = {
 };
 
 export default function KanbanBoard() {
+  const navigate = useNavigate();
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -38,11 +40,18 @@ export default function KanbanBoard() {
       setLoading(true);
       setError(null);
 
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError || !user) {
+        navigate('/');
+        return;
+      }
+
       const { data, error: fetchError } = await supabase
         .from('tasks')
-        .select('*');
+        .select('*, users!assignee_id(full_name)');
 
       if (fetchError) throw fetchError;
+
       setTasks(data || []);
     } catch (err) {
       setError(err.message || 'Failed to load tasks');
@@ -69,7 +78,6 @@ export default function KanbanBoard() {
 
     if (!destination) return;
 
-    // Dropped in the same place
     if (
       destination.droppableId === source.droppableId &&
       destination.index === source.index
@@ -79,7 +87,6 @@ export default function KanbanBoard() {
 
     const newStatus = destination.droppableId;
 
-    // Optimistic UI update
     const previousTasks = [...tasks];
     setTasks((prevTasks) =>
       prevTasks.map((task) =>
@@ -89,7 +96,6 @@ export default function KanbanBoard() {
       )
     );
 
-    // Update status in Supabase
     try {
       const { error: updateError } = await supabase
         .from('tasks')
@@ -99,18 +105,15 @@ export default function KanbanBoard() {
       if (updateError) throw updateError;
     } catch (err) {
       setError(err.message || 'Failed to update task status');
-      setTasks(previousTasks); // Revert on failure
+      setTasks(previousTasks);
     }
   };
 
   return (
     <div className="min-h-screen flex bg-slate-50 font-sans text-slate-900 antialiased text-left w-full">
-      {/* Dark Sidebar */}
       <Sidebar />
 
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 bg-slate-50">
-        {/* Top Header */}
         <header className="h-16 border-b border-slate-200 bg-white px-8 flex items-center justify-between sticky top-0 z-10 shadow-xs">
           <div>
             <h1 className="text-xl font-bold text-slate-900 tracking-tight m-0 leading-tight">
@@ -122,11 +125,10 @@ export default function KanbanBoard() {
           </div>
         </header>
 
-        {/* Board Main Body */}
         <main className="p-8 flex-1 flex flex-col">
           {error && (
-            <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-md text-sm font-medium text-red-800">
-              {error}
+            <div className="mb-6 bg-red-50 border border-red-200 p-4 rounded-xl text-sm font-semibold text-red-700 flex items-center gap-2">
+              <span>⚠️</span> {error}
             </div>
           )}
 
@@ -137,7 +139,7 @@ export default function KanbanBoard() {
             </div>
           ) : (
             <DragDropContext onDragEnd={onDragEnd}>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 flex-1 items-start">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 flex-1 items-start overflow-x-auto pb-4">
                 {Object.entries(COLUMNS).map(([columnId, columnInfo]) => {
                   const columnTasks = tasks.filter(
                     (task) => (task.status || 'todo') === columnId
@@ -146,9 +148,8 @@ export default function KanbanBoard() {
                   return (
                     <div
                       key={columnId}
-                      className={`bg-slate-100/90 rounded-2xl p-4 border-t-4 ${columnInfo.color} flex flex-col min-h-[550px] shadow-xs`}
+                      className={`bg-slate-100/90 rounded-2xl p-4 border-t-4 ${columnInfo.color} flex flex-col min-h-[600px] min-w-[280px] shadow-xs`}
                     >
-                      {/* Column Header */}
                       <div className="flex items-center justify-between pb-3 mb-3 border-b border-slate-200">
                         <h3 className="font-bold text-slate-900 text-base m-0">
                           {columnInfo.title}
@@ -160,7 +161,6 @@ export default function KanbanBoard() {
                         </span>
                       </div>
 
-                      {/* Droppable Task List */}
                       <Droppable droppableId={columnId}>
                         {(provided, snapshot) => (
                           <div
@@ -185,7 +185,6 @@ export default function KanbanBoard() {
                                       snapshot.isDragging ? 'shadow-lg ring-2 ring-blue-500 ring-opacity-50' : ''
                                     }`}
                                   >
-                                    {/* Task Header: Token & Priority Badge */}
                                     <div className="flex items-center justify-between gap-2 mb-3">
                                       <span className="font-mono text-xs font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded border border-blue-100">
                                         {task.task_token || `TASK-${task.id}`}
@@ -201,23 +200,20 @@ export default function KanbanBoard() {
                                       )}
                                     </div>
 
-                                    {/* Task Title */}
                                     <h4 className="text-sm font-bold text-slate-900 mb-2 leading-snug m-0">
                                       {task.title}
                                     </h4>
 
-                                    {/* Task Description snippet if available */}
                                     {task.description && (
                                       <p className="text-xs text-slate-600 line-clamp-2 mb-3 leading-relaxed">
                                         {task.description}
                                       </p>
                                     )}
 
-                                    {/* Task Footer: Assignee */}
                                     <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs text-slate-500">
                                       <span className="font-medium text-slate-400">Assignee</span>
                                       <span className="font-semibold text-slate-700 truncate max-w-[140px]">
-                                        {task.assignee || task.assigned_to || 'Unassigned'}
+                                        {task.users?.full_name || 'Unassigned'}
                                       </span>
                                     </div>
                                   </div>
@@ -238,4 +234,4 @@ export default function KanbanBoard() {
       </div>
     </div>
   );
-}
+}

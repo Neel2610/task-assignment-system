@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import Sidebar from '../components/Sidebar';
 
-export default function CreateProject({ onProjectCreated }) {
+export default function CreateProject() {
+  const navigate = useNavigate();
+
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [status, setStatus] = useState('active');
@@ -11,24 +14,43 @@ export default function CreateProject({ onProjectCreated }) {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
 
+  useEffect(() => {
+    const checkUser = async () => {
+      try {
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError || !user) {
+          navigate('/');
+        }
+      } catch (err) {
+        navigate('/');
+      }
+    };
+    checkUser();
+  }, [navigate]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+
+    if (!title.trim()) {
+      setError('Title cannot be empty');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      // Fetch current logged-in user
       const {
         data: { user },
         error: userError,
       } = await supabase.auth.getUser();
 
       if (userError || !user) {
-        throw new Error('You must be logged in to create a project.');
+        navigate('/');
+        return;
       }
 
-      // Insert new project
       const { data, error: insertError } = await supabase
         .from('projects')
         .insert([
@@ -45,14 +67,29 @@ export default function CreateProject({ onProjectCreated }) {
         throw insertError;
       }
 
-      setSuccess('Project created successfully!');
-      setTitle('');
-      setDescription('');
-      setStatus('active');
+      const createdProject = data && data[0];
 
-      if (onProjectCreated && typeof onProjectCreated === 'function') {
-        onProjectCreated(data[0]);
+      if (createdProject) {
+        const { error: memberError } = await supabase
+          .from('project_members')
+          .insert([
+            {
+              project_id: createdProject.id,
+              user_id: user.id,
+              role_in_project: 'admin',
+            },
+          ]);
+
+        if (memberError) {
+          throw memberError;
+        }
       }
+
+      setSuccess('Project created successfully! Redirecting to dashboard...');
+
+      setTimeout(() => {
+        navigate('/dashboard');
+      }, 1500);
     } catch (err) {
       setError(err.message || 'Failed to create project');
     } finally {
@@ -62,12 +99,9 @@ export default function CreateProject({ onProjectCreated }) {
 
   return (
     <div className="min-h-screen flex bg-slate-50 font-sans text-slate-900 antialiased text-left w-full">
-      {/* Dark Sidebar */}
       <Sidebar />
 
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 bg-slate-50">
-        {/* Top Header */}
         <header className="h-16 border-b border-slate-200 bg-white px-8 flex items-center justify-between sticky top-0 z-10 shadow-xs">
           <div>
             <h1 className="text-xl font-bold text-slate-900 tracking-tight m-0 leading-tight">
@@ -75,9 +109,14 @@ export default function CreateProject({ onProjectCreated }) {
             </h1>
             <p className="text-xs text-slate-500 font-medium">Add a new project to your workspace</p>
           </div>
+          <Link
+            to="/dashboard"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-lg transition-colors border border-slate-200"
+          >
+            ← Back to Dashboard
+          </Link>
         </header>
 
-        {/* Form Body */}
         <main className="p-8 flex-1 flex justify-center items-start">
           <div className="w-full max-w-2xl bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
             <h2 className="text-xl font-bold text-slate-900 mb-6 m-0 border-b border-slate-100 pb-4">
@@ -104,7 +143,6 @@ export default function CreateProject({ onProjectCreated }) {
                 <input
                   id="title"
                   type="text"
-                  required
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
                   className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 text-sm font-medium shadow-xs focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
@@ -164,4 +202,4 @@ export default function CreateProject({ onProjectCreated }) {
       </div>
     </div>
   );
-}
+}

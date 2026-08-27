@@ -1,15 +1,18 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import Sidebar from '../components/Sidebar';
 
-export default function CreateTask({ onTaskCreated }) {
+export default function CreateTask() {
+  const navigate = useNavigate();
+
   const [projects, setProjects] = useState([]);
   const [members, setMembers] = useState([]);
 
-  const [projectId, setProjectId] = useState('');
+  const [selectedProjectId, setSelectedProjectId] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [assignedTo, setAssignedTo] = useState('');
+  const [assigneeId, setAssigneeId] = useState('');
   const [priority, setPriority] = useState('medium');
   const [dueDate, setDueDate] = useState('');
 
@@ -19,106 +22,112 @@ export default function CreateTask({ onTaskCreated }) {
   const [success, setSuccess] = useState(null);
 
   useEffect(() => {
-    const fetchData = async () => {
+    const fetchProjects = async () => {
       try {
         setFetchingData(true);
         setError(null);
 
-        // Fetch projects
+        const { data: { user }, error: userError } = await supabase.auth.getUser();
+        if (userError || !user) {
+          navigate('/');
+          return;
+        }
+
         const { data: projectsData, error: projectsError } = await supabase
           .from('projects')
           .select('id, name');
 
         if (projectsError) throw projectsError;
         setProjects(projectsData || []);
-        if (projectsData && projectsData.length > 0) {
-          setProjectId(projectsData[0].id);
-        }
-
-        // Fetch project members joining users table to get full_name
-        let membersList = [];
-        try {
-          const { data: joinedData, error: joinedError } = await supabase
-            .from('project_members')
-            .select('id, user_id, users:user_id(id, full_name, email)');
-
-          if (!joinedError && joinedData) {
-            membersList = joinedData;
-          } else {
-            // Fallback query if users relation alias differs
-            const { data: fallbackData, error: fallbackError } = await supabase
-              .from('project_members')
-              .select('id, user_id, users(id, full_name, email)');
-            if (!fallbackError && fallbackData) {
-              membersList = fallbackData;
-            } else {
-              // Direct select fallback without non-existent name column
-              const { data: simpleData } = await supabase
-                .from('project_members')
-                .select('id, user_id');
-              membersList = simpleData || [];
-            }
-          }
-        } catch (e) {
-          console.warn('Could not join users table for project members:', e);
-        }
-
-        setMembers(membersList);
-        if (membersList && membersList.length > 0) {
-          setAssignedTo(membersList[0].user_id || membersList[0].id);
-        }
       } catch (err) {
-        setError(err.message || 'Failed to load form options');
+        setError(err.message || 'Failed to load projects');
       } finally {
         setFetchingData(false);
       }
     };
 
-    fetchData();
-  }, []);
+    fetchProjects();
+  }, [navigate]);
 
-  const generateTaskToken = () => {
-    const randomNum = Math.floor(100 + Math.random() * 900); // Ensures 3 digits (100-999)
-    return `TASK-${randomNum}`;
+  const handleProjectChange = async (pId) => {
+    setSelectedProjectId(pId);
+    setMembers([]);
+    setAssigneeId('');
+
+    if (!pId) return;
+
+    try {
+      const { data, error: membersError } = await supabase
+        .from('project_members')
+        .select('user_id, users(id, full_name)')
+        .eq('project_id', pId);
+
+      if (membersError) throw membersError;
+      setMembers(data || []);
+    } catch (err) {
+      setError(err.message || 'Failed to load project members');
+    }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+
+    if (!title.trim()) {
+      setError('Title is required');
+      return;
+    }
+    if (!selectedProjectId) {
+      setError('Please select a project');
+      return;
+    }
+
     setLoading(true);
 
-    const taskToken = generateTaskToken();
+    const taskToken = `TASK-${String(Date.now()).slice(-4)}`;
 
     try {
-      const { data, error: insertError } = await supabase
+      const {
+        data: { user },
+        error: userError,
+      } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        navigate('/');
+        return;
+      }
+
+      const { error: insertError } = await supabase
         .from('tasks')
         .insert([
           {
-            project_id: projectId,
+            task_token: taskToken,
+            project_id: selectedProjectId,
             title,
             description,
-            assigned_to: assignedTo || null,
+            status: 'todo',
             priority,
+            assignee_id: assigneeId || null,
             due_date: dueDate || null,
-            task_token: taskToken,
+            created_by: user.id,
           },
-        ])
-        .select();
+        ]);
 
       if (insertError) {
         throw insertError;
       }
 
-      setSuccess(`Task created successfully with ID: ${taskToken}`);
+      setSuccess(`Task created successfully with token ${taskToken}!`);
+
+      // Clear form
       setTitle('');
       setDescription('');
+      setSelectedProjectId('');
+      setAssigneeId('');
       setPriority('medium');
       setDueDate('');
-
-      if (onTaskCreated && typeof onTaskCreated === 'function') {
-        onTaskCreated(data[0]);
-      }
+      setMembers([]);
     } catch (err) {
       setError(err.message || 'Failed to create task');
     } finally {
@@ -128,12 +137,9 @@ export default function CreateTask({ onTaskCreated }) {
 
   return (
     <div className="min-h-screen flex bg-slate-50 font-sans text-slate-900 antialiased text-left w-full">
-      {/* Dark Sidebar */}
       <Sidebar />
 
-      {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 bg-slate-50">
-        {/* Top Header */}
         <header className="h-16 border-b border-slate-200 bg-white px-8 flex items-center justify-between sticky top-0 z-10 shadow-xs">
           <div>
             <h1 className="text-xl font-bold text-slate-900 tracking-tight m-0 leading-tight">
@@ -143,7 +149,6 @@ export default function CreateTask({ onTaskCreated }) {
           </div>
         </header>
 
-        {/* Main Form Content */}
         <main className="p-8 flex-1 flex justify-center items-start">
           {fetchingData ? (
             <div className="flex flex-col justify-center items-center py-20">
@@ -175,14 +180,11 @@ export default function CreateTask({ onTaskCreated }) {
                   </label>
                   <select
                     id="project"
-                    required
-                    value={projectId}
-                    onChange={(e) => setProjectId(e.target.value)}
+                    value={selectedProjectId}
+                    onChange={(e) => handleProjectChange(e.target.value)}
                     className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-sm font-medium shadow-xs focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 cursor-pointer"
                   >
-                    <option value="" disabled>
-                      Select a project
-                    </option>
+                    <option value="">Select a project</option>
                     {projects.map((project) => (
                       <option key={project.id} value={project.id}>
                         {project.name}
@@ -198,7 +200,6 @@ export default function CreateTask({ onTaskCreated }) {
                   <input
                     id="title"
                     type="text"
-                    required
                     value={title}
                     onChange={(e) => setTitle(e.target.value)}
                     className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 text-sm font-medium shadow-xs focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
@@ -227,24 +228,16 @@ export default function CreateTask({ onTaskCreated }) {
                     </label>
                     <select
                       id="assignedTo"
-                      value={assignedTo}
-                      onChange={(e) => setAssignedTo(e.target.value)}
+                      value={assigneeId}
+                      onChange={(e) => setAssigneeId(e.target.value)}
                       className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-sm font-medium shadow-xs focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 cursor-pointer"
                     >
                       <option value="">Unassigned</option>
-                      {members.map((member) => {
-                        const displayName =
-                          member.users?.full_name ||
-                          member.users?.email ||
-                          member.full_name ||
-                          member.email ||
-                          `User (${member.user_id || member.id})`;
-                        return (
-                          <option key={member.id} value={member.user_id || member.id}>
-                            {displayName}
-                          </option>
-                        );
-                      })}
+                      {members.map((member) => (
+                        <option key={member.user_id} value={member.user_id}>
+                          {member.users?.full_name || member.user_id}
+                        </option>
+                      ))}
                     </select>
                   </div>
 
@@ -301,4 +294,4 @@ export default function CreateTask({ onTaskCreated }) {
       </div>
     </div>
   );
-}
+}
