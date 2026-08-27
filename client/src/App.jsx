@@ -7,6 +7,8 @@ import CreateProject from './pages/CreateProject';
 import CreateTask from './pages/CreateTask';
 import KanbanBoard from './pages/KanbanBoard';
 import AddMember from './pages/AddMember';
+import ProjectDetail from './pages/ProjectDetail';
+import TaskDetail from './pages/TaskDetail';
 
 export default function App() {
   return (
@@ -16,6 +18,8 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Signup />} />
         <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/project/:projectId" element={<ProjectDetail />} />
+        <Route path="/task/:taskId" element={<TaskDetail />} />
         <Route path="/create-project" element={<CreateProject />} />
         <Route path="/create-task" element={<CreateTask />} />
         <Route path="/kanban" element={<KanbanBoard />} />

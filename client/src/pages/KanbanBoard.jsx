@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { supabase } from '../supabase';
 import Sidebar from '../components/Sidebar';
@@ -201,7 +201,12 @@ export default function KanbanBoard() {
                                     </div>
 
                                     <h4 className="text-sm font-bold text-slate-900 mb-2 leading-snug m-0">
-                                      {task.title}
+                                      <Link
+                                        to={`/task/${task.id}`}
+                                        className="hover:text-blue-600 hover:underline transition-colors"
+                                      >
+                                        {task.title}
+                                      </Link>
                                     </h4>
 
                                     {task.description && (

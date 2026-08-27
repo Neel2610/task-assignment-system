@@ -178,7 +178,12 @@ export default function Dashboard() {
                     <div>
                       <div className="flex justify-between items-start gap-3 mb-3">
                         <h3 className="text-base font-bold text-slate-900 leading-snug m-0 line-clamp-1">
-                          {project.name}
+                          <Link
+                            to={`/project/${project.id}`}
+                            className="hover:text-blue-600 hover:underline transition-colors"
+                          >
+                            {project.name}
+                          </Link>
                         </h3>
                         {project.status && (
                           <span
@@ -210,12 +215,14 @@ export default function Dashboard() {
                           Delete
                         </button>
                       </div>
-                      <Link
-                        to="/kanban"
-                        className="inline-flex items-center gap-1 font-semibold text-blue-600 hover:text-blue-700 hover:underline"
-                      >
-                        View Kanban →
-                      </Link>
+                      <div className="flex items-center gap-3">
+                        <Link
+                          to={`/project/${project.id}`}
+                          className="inline-flex items-center gap-1 font-semibold text-blue-600 hover:text-blue-700 hover:underline"
+                        >
+                          Details →
+                        </Link>
+                      </div>
                     </div>
                   </div>
                 ))}
