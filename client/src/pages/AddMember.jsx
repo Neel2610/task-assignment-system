@@ -2,11 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import Layout from '../components/Layout';
+import { useUserRole } from '../hooks/useUserRole';
 
 export default function AddMember() {
   const navigate = useNavigate();
   const flow1EmailRef = useRef(null);
   const flow1ProjectRef = useRef(null);
+
+  const { role, userId, loading: roleLoading, isSuperAdmin, isAdmin, isMember } = useUserRole();
 
   // Flow 1 states: Add Existing User to Project
   const [existingUserEmail, setExistingUserEmail] = useState('');
@@ -23,8 +26,10 @@ export default function AddMember() {
   const [newRoleInProject, setNewRoleInProject] = useState('member');
   const [creatingUser, setCreatingUser] = useState(false);
 
+  // Role change state for super_admin
+  const [updatingRoleId, setUpdatingRoleId] = useState(null);
+
   // Page states
-  const [currentUserRole, setCurrentUserRole] = useState(null);
   const [projects, setProjects] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
   const [pageLoading, setPageLoading] = useState(true);
@@ -38,6 +43,16 @@ export default function AddMember() {
       return () => clearTimeout(timer);
     }
   }, [success]);
+
+  useEffect(() => {
+    if (!roleLoading) {
+      if (isMember) {
+        navigate('/dashboard', { state: { error: 'Access denied' }, replace: true });
+        return;
+      }
+      initPage();
+    }
+  }, [roleLoading, isMember, role, navigate]);
 
   const initPage = async () => {
     try {
@@ -55,37 +70,28 @@ export default function AddMember() {
         return;
       }
 
-      // 2. Fetch role of logged in user from users table
-      const { data: userProfile, error: profileError } = await supabase
-        .from('users')
-        .select('role')
-        .eq('id', user.id)
-        .single();
+      // Fetch projects list scoped by role
+      if (isSuperAdmin || role === 'super_admin') {
+        const { data: projectsData, error: projectsError } = await supabase
+          .from('projects')
+          .select('id, name')
+          .order('name', { ascending: true });
 
-      if (profileError) {
-        throw new Error('Failed to verify user permissions.');
+        if (projectsError) throw projectsError;
+        setProjects(projectsData || []);
+      } else {
+        // Admin: only their owned projects
+        const { data: projectsData, error: projectsError } = await supabase
+          .from('projects')
+          .select('id, name')
+          .eq('owner_id', user.id)
+          .order('name', { ascending: true });
+
+        if (projectsError) throw projectsError;
+        setProjects(projectsData || []);
       }
 
-      const userRole = userProfile?.role?.toLowerCase() || 'member';
-
-      // Member role cannot see this page
-      if (userRole === 'member') {
-        navigate('/dashboard', { state: { error: 'Access denied: Team management requires Admin role.' } });
-        return;
-      }
-
-      setCurrentUserRole(userRole);
-
-      // 3. Fetch projects list
-      const { data: projectsData, error: projectsError } = await supabase
-        .from('projects')
-        .select('id, name')
-        .order('name', { ascending: true });
-
-      if (projectsError) throw projectsError;
-      setProjects(projectsData || []);
-
-      // 4. Fetch all team members from users table
+      // Fetch all team members from users table
       await fetchAllTeamMembers();
     } catch (err) {
       setError(err.message || 'Error initializing team page.');
@@ -93,24 +99,6 @@ export default function AddMember() {
       setPageLoading(false);
     }
   };
-
-  const fetchAllTeamMembers = async () => {
-    try {
-      const { data, error: membersError } = await supabase
-        .from('users')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (membersError) throw membersError;
-      setTeamMembers(data || []);
-    } catch (err) {
-      console.error('Error fetching team members:', err);
-    }
-  };
-
-  useEffect(() => {
-    initPage();
-  }, [navigate]);
 
   // ==========================================
   // FLOW 1: ADD EXISTING USER TO A PROJECT
@@ -292,6 +280,35 @@ export default function AddMember() {
     }
   };
 
+  const handleRoleChange = async (targetUserId, newSystemRole) => {
+    if (!isSuperAdmin && role !== 'super_admin') {
+      setError('Only Super Admins can change user roles.');
+      return;
+    }
+
+    try {
+      setUpdatingRoleId(targetUserId);
+      setError(null);
+      setSuccess(null);
+
+      const { error: updateErr } = await supabase
+        .from('users')
+        .update({ role: newSystemRole })
+        .eq('id', targetUserId);
+
+      if (updateErr) throw updateErr;
+
+      setTeamMembers((prev) =>
+        prev.map((u) => (u.id === targetUserId ? { ...u, role: newSystemRole } : u))
+      );
+      setSuccess('User role updated successfully!');
+    } catch (err) {
+      setError(err.message || 'Failed to update user role.');
+    } finally {
+      setUpdatingRoleId(null);
+    }
+  };
+
   // Quick pre-fill email into Flow 1
   const handleQuickAddToProject = (userEmail) => {
     setExistingUserEmail(userEmail);
@@ -305,8 +322,8 @@ export default function AddMember() {
     }
   };
 
-  const getRoleBadge = (role) => {
-    const r = role?.toLowerCase();
+  const getRoleBadge = (roleName) => {
+    const r = roleName?.toLowerCase();
     if (r === 'super_admin') {
       return (
         <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
@@ -342,7 +359,9 @@ export default function AddMember() {
             Team Management
           </h1>
           <p className="text-xs text-slate-400 font-medium mt-0.5">
-            Add existing users to projects or create brand new user accounts
+            {isSuperAdmin
+              ? 'Add existing users to projects, manage user roles, or create brand new user accounts'
+              : 'Add existing users to your workspace projects'}
           </p>
         </div>
 
@@ -384,7 +403,7 @@ export default function AddMember() {
           </div>
         ) : (
           <>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className={`grid grid-cols-1 ${isSuperAdmin ? 'lg:grid-cols-2' : 'max-w-2xl mx-auto'} gap-8`}>
               {/* ========================================== */}
               {/* FLOW 1: ADD EXISTING USER TO PROJECT       */}
               {/* ========================================== */}
@@ -394,7 +413,7 @@ export default function AddMember() {
                     <div>
                       <div className="flex items-center gap-2">
                         <span className="w-6 h-6 rounded-lg bg-blue-500/20 text-blue-400 text-xs font-bold flex items-center justify-center border border-blue-500/30">
-                          1
+                          {isSuperAdmin ? '1' : '👥'}
                         </span>
                         <h2 className="text-base font-bold text-white m-0">Add Existing User to Project</h2>
                       </div>
@@ -493,170 +512,171 @@ export default function AddMember() {
               </div>
 
               {/* ========================================== */}
-              {/* FLOW 2: CREATE BRAND NEW USER              */}
+              {/* FLOW 2: CREATE BRAND NEW USER (Super Admin)*/}
               {/* ========================================== */}
-              <div className="bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 sm:p-7 shadow-xl animate-fade-in-up">
-                <div className="border-b border-slate-800/60 pb-4 mb-6 flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center justify-center border border-emerald-500/30">
-                        2
-                      </span>
-                      <h2 className="text-base font-bold text-white m-0">Create New User</h2>
-                    </div>
-                    <p className="text-xs text-slate-400 mt-1.5 mb-0">
-                      Create a brand new authentication account and workspace profile
-                    </p>
-                  </div>
-                </div>
-
-                <form onSubmit={handleCreateNewUser} className="space-y-4">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Full Name */}
+              {isSuperAdmin && (
+                <div className="bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 sm:p-7 shadow-xl animate-fade-in-up">
+                  <div className="border-b border-slate-800/60 pb-4 mb-6 flex items-center justify-between">
                     <div>
-                      <label
-                        htmlFor="newFullName"
-                        className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5"
-                      >
-                        Full Name <span className="text-rose-500">*</span>
-                      </label>
-                      <input
-                        id="newFullName"
-                        type="text"
-                        required
-                        value={newFullName}
-                        onChange={(e) => setNewFullName(e.target.value)}
-                        placeholder="Jane Doe"
-                        className="w-full px-4 py-2.5 bg-slate-950/60 border border-slate-800 hover:border-slate-700 rounded-xl text-slate-200 placeholder-slate-500 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                      />
-                    </div>
-
-                    {/* Email */}
-                    <div>
-                      <label
-                        htmlFor="newEmail"
-                        className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5"
-                      >
-                        Email <span className="text-rose-500">*</span>
-                      </label>
-                      <input
-                        id="newEmail"
-                        type="email"
-                        required
-                        value={newEmail}
-                        onChange={(e) => setNewEmail(e.target.value)}
-                        placeholder="jane@company.com"
-                        className="w-full px-4 py-2.5 bg-slate-950/60 border border-slate-800 hover:border-slate-700 rounded-xl text-slate-200 placeholder-slate-500 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                      />
+                      <div className="flex items-center gap-2">
+                        <span className="w-6 h-6 rounded-lg bg-emerald-500/20 text-emerald-400 text-xs font-bold flex items-center justify-center border border-emerald-500/30">
+                          2
+                        </span>
+                        <h2 className="text-base font-bold text-white m-0">Create New User</h2>
+                      </div>
+                      <p className="text-xs text-slate-400 mt-1.5 mb-0">
+                        Create a brand new authentication account and workspace profile
+                      </p>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    {/* Password */}
-                    <div>
-                      <label
-                        htmlFor="newPassword"
-                        className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5"
-                      >
-                        Password <span className="text-rose-500">*</span>
-                      </label>
-                      <input
-                        id="newPassword"
-                        type="password"
-                        required
-                        minLength={8}
-                        value={newPassword}
-                        onChange={(e) => setNewPassword(e.target.value)}
-                        placeholder="Min 8 characters"
-                        className="w-full px-4 py-2.5 bg-slate-950/60 border border-slate-800 hover:border-slate-700 rounded-xl text-slate-200 placeholder-slate-500 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
-                      />
-                    </div>
-
-                    {/* System Role */}
-                    <div>
-                      <label
-                        htmlFor="newRole"
-                        className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5"
-                      >
-                        System Role <span className="text-rose-500">*</span>
-                      </label>
-                      <select
-                        id="newRole"
-                        value={newRole}
-                        onChange={(e) => setNewRole(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-slate-950/60 border border-slate-800 hover:border-slate-700 rounded-xl text-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all cursor-pointer"
-                      >
-                        <option value="member">Member</option>
-                        {currentUserRole === 'super_admin' && (
-                          <option value="admin">Admin</option>
-                        )}
-                      </select>
-                    </div>
-                  </div>
-
-                  {/* Optional Project Assignment */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-                    <div>
-                      <label
-                        htmlFor="newProjectId"
-                        className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5"
-                      >
-                        Assign to Project <span className="text-slate-500 font-normal lowercase">(optional)</span>
-                      </label>
-                      <select
-                        id="newProjectId"
-                        value={newProjectId}
-                        onChange={(e) => setNewProjectId(e.target.value)}
-                        className="w-full px-4 py-2.5 bg-slate-950/60 border border-slate-800 hover:border-slate-700 rounded-xl text-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all cursor-pointer"
-                      >
-                        <option value="">None (Do not assign yet)</option>
-                        {projects.map((project) => (
-                          <option key={project.id} value={project.id}>
-                            {project.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-
-                    {newProjectId && (
+                  <form onSubmit={handleCreateNewUser} className="space-y-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Full Name */}
                       <div>
                         <label
-                          htmlFor="newRoleInProject"
+                          htmlFor="newFullName"
                           className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5"
                         >
-                          Role in Project <span className="text-rose-500">*</span>
+                          Full Name <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          id="newFullName"
+                          type="text"
+                          required
+                          value={newFullName}
+                          onChange={(e) => setNewFullName(e.target.value)}
+                          placeholder="Jane Doe"
+                          className="w-full px-4 py-2.5 bg-slate-950/60 border border-slate-800 hover:border-slate-700 rounded-xl text-slate-200 placeholder-slate-500 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                        />
+                      </div>
+
+                      {/* Email */}
+                      <div>
+                        <label
+                          htmlFor="newEmail"
+                          className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5"
+                        >
+                          Email <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          id="newEmail"
+                          type="email"
+                          required
+                          value={newEmail}
+                          onChange={(e) => setNewEmail(e.target.value)}
+                          placeholder="jane@company.com"
+                          className="w-full px-4 py-2.5 bg-slate-950/60 border border-slate-800 hover:border-slate-700 rounded-xl text-slate-200 placeholder-slate-500 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* Password */}
+                      <div>
+                        <label
+                          htmlFor="newPassword"
+                          className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5"
+                        >
+                          Password <span className="text-rose-500">*</span>
+                        </label>
+                        <input
+                          id="newPassword"
+                          type="password"
+                          required
+                          minLength={8}
+                          value={newPassword}
+                          onChange={(e) => setNewPassword(e.target.value)}
+                          placeholder="Min 8 characters"
+                          className="w-full px-4 py-2.5 bg-slate-950/60 border border-slate-800 hover:border-slate-700 rounded-xl text-slate-200 placeholder-slate-500 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+                        />
+                      </div>
+
+                      {/* System Role */}
+                      <div>
+                        <label
+                          htmlFor="newRole"
+                          className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5"
+                        >
+                          System Role <span className="text-rose-500">*</span>
                         </label>
                         <select
-                          id="newRoleInProject"
-                          value={newRoleInProject}
-                          onChange={(e) => setNewRoleInProject(e.target.value)}
+                          id="newRole"
+                          value={newRole}
+                          onChange={(e) => setNewRole(e.target.value)}
                           className="w-full px-4 py-2.5 bg-slate-950/60 border border-slate-800 hover:border-slate-700 rounded-xl text-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all cursor-pointer"
                         >
                           <option value="member">Member</option>
                           <option value="admin">Admin</option>
+                          <option value="super_admin">Super Admin</option>
                         </select>
                       </div>
-                    )}
-                  </div>
+                    </div>
 
-                  <div className="pt-2">
-                    <button
-                      type="submit"
-                      disabled={creatingUser}
-                      className="w-full flex justify-center items-center py-2.5 px-4 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-[0.99] shadow-lg shadow-emerald-600/25 disabled:opacity-60 disabled:cursor-not-allowed transition-all cursor-pointer"
-                    >
-                      {creatingUser ? (
-                        <div className="flex items-center space-x-2">
-                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                          <span>Creating User Account...</span>
+                    {/* Optional Project Assignment */}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                      <div>
+                        <label
+                          htmlFor="newProjectId"
+                          className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5"
+                        >
+                          Assign to Project <span className="text-slate-500 font-normal lowercase">(optional)</span>
+                        </label>
+                        <select
+                          id="newProjectId"
+                          value={newProjectId}
+                          onChange={(e) => setNewProjectId(e.target.value)}
+                          className="w-full px-4 py-2.5 bg-slate-950/60 border border-slate-800 hover:border-slate-700 rounded-xl text-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all cursor-pointer"
+                        >
+                          <option value="">None (Do not assign yet)</option>
+                          {projects.map((project) => (
+                            <option key={project.id} value={project.id}>
+                              {project.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {newProjectId && (
+                        <div>
+                          <label
+                            htmlFor="newRoleInProject"
+                            className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-1.5"
+                          >
+                            Role in Project <span className="text-rose-500">*</span>
+                          </label>
+                          <select
+                            id="newRoleInProject"
+                            value={newRoleInProject}
+                            onChange={(e) => setNewRoleInProject(e.target.value)}
+                            className="w-full px-4 py-2.5 bg-slate-950/60 border border-slate-800 hover:border-slate-700 rounded-xl text-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all cursor-pointer"
+                          >
+                            <option value="member">Member</option>
+                            <option value="admin">Admin</option>
+                          </select>
                         </div>
-                      ) : (
-                        'Create New User'
                       )}
-                    </button>
-                  </div>
-                </form>
-              </div>
+                    </div>
+
+                    <div className="pt-2">
+                      <button
+                        type="submit"
+                        disabled={creatingUser}
+                        className="w-full flex justify-center items-center py-2.5 px-4 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 active:scale-[0.99] shadow-lg shadow-emerald-600/25 disabled:opacity-60 disabled:cursor-not-allowed transition-all cursor-pointer"
+                      >
+                        {creatingUser ? (
+                          <div className="flex items-center space-x-2">
+                            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span>Creating User Account...</span>
+                          </div>
+                        ) : (
+                          'Create New User'
+                        )}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              )}
             </div>
 
             {/* ========================================== */}
@@ -665,7 +685,9 @@ export default function AddMember() {
             <div className="bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 sm:p-8 shadow-xl animate-fade-in-up">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 mb-6 border-b border-slate-800/60">
                 <div>
-                  <h2 className="text-lg font-bold text-white m-0">All Workspace Users</h2>
+                  <h2 className="text-lg font-bold text-white m-0">
+                    {isSuperAdmin ? 'All Workspace Users' : 'Workspace Users Directory'}
+                  </h2>
                   <p className="text-xs text-slate-400 mt-1 mb-0">
                     Total {teamMembers.length} registered users in the workspace
                   </p>
@@ -726,7 +748,20 @@ export default function AddMember() {
                               {member.email}
                             </td>
                             <td className="py-3.5 px-4">
-                              {getRoleBadge(member.role)}
+                              {isSuperAdmin ? (
+                                <select
+                                  value={member.role || 'member'}
+                                  disabled={updatingRoleId === member.id}
+                                  onChange={(e) => handleRoleChange(member.id, e.target.value)}
+                                  className="px-2.5 py-1 bg-slate-950 border border-slate-700 rounded-lg text-slate-200 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer disabled:opacity-50"
+                                >
+                                  <option value="member">Member</option>
+                                  <option value="admin">Admin</option>
+                                  <option value="super_admin">Super Admin</option>
+                                </select>
+                              ) : (
+                                getRoleBadge(member.role)
+                              )}
                             </td>
                             <td className="py-3.5 px-4 text-right">
                               <button

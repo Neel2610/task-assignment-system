@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import { supabase } from './supabase';
+import { RoleGuard } from './components/RoleGuard';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
 import CreateProject from './pages/CreateProject';
@@ -10,7 +11,7 @@ import AddMember from './pages/AddMember';
 import ProjectDetail from './pages/ProjectDetail';
 import TaskDetail from './pages/TaskDetail';
 
-function ProtectedRoute({ children, allowedRoles }) {
+function ProtectedRoute({ children }) {
   const [loading, setLoading] = useState(true);
   const [user, setUser] = useState(null);
   const navigate = useNavigate();
@@ -18,7 +19,7 @@ function ProtectedRoute({ children, allowedRoles }) {
   useEffect(() => {
     let isMounted = true;
 
-    supabase.auth.getUser().then(async ({ data, error }) => {
+    supabase.auth.getUser().then(({ data, error }) => {
       if (!isMounted) return;
 
       if (error || !data?.user) {
@@ -27,28 +28,13 @@ function ProtectedRoute({ children, allowedRoles }) {
       }
 
       setUser(data.user);
-
-      if (allowedRoles && allowedRoles.length > 0) {
-        const { data: profile } = await supabase
-          .from('users')
-          .select('role')
-          .eq('id', data.user.id)
-          .single();
-
-        const role = profile?.role || 'member';
-        if (!allowedRoles.includes(role)) {
-          navigate('/dashboard', { state: { error: 'Access denied' } });
-          return;
-        }
-      }
-
       setLoading(false);
     });
 
     return () => {
       isMounted = false;
     };
-  }, [navigate, allowedRoles]);
+  }, [navigate]);
 
   if (loading) {
     return (
@@ -112,7 +98,9 @@ export default function App() {
           path="/create-project"
           element={
             <ProtectedRoute>
-              <CreateProject />
+              <RoleGuard allowedRoles={['super_admin', 'admin']}>
+                <CreateProject />
+              </RoleGuard>
             </ProtectedRoute>
           }
         />
@@ -120,7 +108,9 @@ export default function App() {
           path="/new-project"
           element={
             <ProtectedRoute>
-              <CreateProject />
+              <RoleGuard allowedRoles={['super_admin', 'admin']}>
+                <CreateProject />
+              </RoleGuard>
             </ProtectedRoute>
           }
         />
@@ -130,7 +120,9 @@ export default function App() {
           path="/create-task"
           element={
             <ProtectedRoute>
-              <CreateTask />
+              <RoleGuard allowedRoles={['super_admin', 'admin']}>
+                <CreateTask />
+              </RoleGuard>
             </ProtectedRoute>
           }
         />
@@ -138,7 +130,9 @@ export default function App() {
           path="/new-task"
           element={
             <ProtectedRoute>
-              <CreateTask />
+              <RoleGuard allowedRoles={['super_admin', 'admin']}>
+                <CreateTask />
+              </RoleGuard>
             </ProtectedRoute>
           }
         />
@@ -165,16 +159,20 @@ export default function App() {
         <Route
           path="/add-member"
           element={
-            <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
-              <AddMember />
+            <ProtectedRoute>
+              <RoleGuard allowedRoles={['super_admin', 'admin']}>
+                <AddMember />
+              </RoleGuard>
             </ProtectedRoute>
           }
         />
         <Route
           path="/team"
           element={
-            <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
-              <AddMember />
+            <ProtectedRoute>
+              <RoleGuard allowedRoles={['super_admin', 'admin']}>
+                <AddMember />
+              </RoleGuard>
             </ProtectedRoute>
           }
         />

@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import Layout from '../components/Layout';
+import { useUserRole } from '../hooks/useUserRole';
 
 export default function ProjectDetail() {
   const params = useParams();
   const projectId = params.id || params.projectId;
   const navigate = useNavigate();
+  const { role, userId, loading: roleLoading, isSuperAdmin, isAdmin, isMember } = useUserRole();
 
   const [project, setProject] = useState(null);
   const [owner, setOwner] = useState(null);
@@ -16,8 +18,10 @@ export default function ProjectDetail() {
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    fetchProjectDetails();
-  }, [projectId, navigate]);
+    if (!roleLoading) {
+      fetchProjectDetails();
+    }
+  }, [projectId, navigate, roleLoading, role, userId]);
 
   const fetchProjectDetails = async () => {
     try {
@@ -35,6 +39,15 @@ export default function ProjectDetail() {
         return;
       }
 
+      // Fetch user profile for role verification
+      const { data: profile } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      const effectiveRole = profile?.role || role || 'member';
+
       // 2. Fetch project information
       const { data: projectData, error: projectError } = await supabase
         .from('projects')
@@ -48,9 +61,11 @@ export default function ProjectDetail() {
         return;
       }
 
-      // 3. Verify access control: user must be owner OR in project_members
+      // 3. Verify access control:
+      // super_admin: can view any project
+      // admin/member: user must be owner OR in project_members
       const isOwner = projectData.owner_id === user.id;
-      let isMember = false;
+      let isProjectMember = false;
 
       const { data: memberRows, error: memberCheckError } = await supabase
         .from('project_members')
@@ -59,10 +74,10 @@ export default function ProjectDetail() {
         .eq('user_id', user.id);
 
       if (!memberCheckError && memberRows && memberRows.length > 0) {
-        isMember = true;
+        isProjectMember = true;
       }
 
-      if (!isOwner && !isMember) {
+      if (effectiveRole !== 'super_admin' && !isOwner && !isProjectMember) {
         setError('You do not have permission to view this project.');
         setLoading(false);
         return;
@@ -105,6 +120,8 @@ export default function ProjectDetail() {
       setLoading(false);
     }
   };
+
+  const canManageProject = isSuperAdmin || (isAdmin && project && (project.owner_id === userId));
 
   const getProjectStatusBadge = (status) => {
     switch (status?.toLowerCase()) {
@@ -149,8 +166,8 @@ export default function ProjectDetail() {
     }
   };
 
-  const getProjectRoleBadge = (role) => {
-    switch (role?.toLowerCase()) {
+  const getProjectRoleBadge = (roleName) => {
+    switch (roleName?.toLowerCase()) {
       case 'admin':
         return 'bg-purple-500/10 text-purple-400 border-purple-500/20';
       default:
@@ -231,14 +248,16 @@ export default function ProjectDetail() {
                   </p>
                 </div>
 
-                <div className="flex items-center gap-3 shrink-0">
-                  <Link
-                    to={`/create-task?projectId=${project?.id}`}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-lg shadow-blue-500/25 active:scale-95 transition-all cursor-pointer"
-                  >
-                    <span>+</span> Add Task
-                  </Link>
-                </div>
+                {canManageProject && (
+                  <div className="flex items-center gap-3 shrink-0">
+                    <Link
+                      to={`/create-task?projectId=${project?.id}`}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-lg shadow-blue-500/25 active:scale-95 transition-all cursor-pointer"
+                    >
+                      <span>+</span> Add Task
+                    </Link>
+                  </div>
+                )}
               </div>
 
               {/* Stats & Meta info */}
@@ -282,12 +301,14 @@ export default function ProjectDetail() {
                 <h3 className="text-base font-bold text-slate-100 m-0 flex items-center gap-2">
                   <span>👥</span> Team Members ({members.length})
                 </h3>
-                <Link
-                  to="/add-member"
-                  className="text-xs font-semibold text-blue-400 hover:text-blue-300 hover:underline"
-                >
-                  + Add Member
-                </Link>
+                {canManageProject && (
+                  <Link
+                    to="/add-member"
+                    className="text-xs font-semibold text-blue-400 hover:text-blue-300 hover:underline"
+                  >
+                    + Add Member
+                  </Link>
+                )}
               </div>
 
               {members.length === 0 ? (
@@ -336,23 +357,27 @@ export default function ProjectDetail() {
                 <h3 className="text-base font-bold text-slate-100 m-0 flex items-center gap-2">
                   <span>📝</span> Project Tasks ({tasks.length})
                 </h3>
-                <Link
-                  to={`/create-task?projectId=${project?.id}`}
-                  className="text-xs font-semibold text-blue-400 hover:text-blue-300 hover:underline"
-                >
-                  + Add Task
-                </Link>
+                {canManageProject && (
+                  <Link
+                    to={`/create-task?projectId=${project?.id}`}
+                    className="text-xs font-semibold text-blue-400 hover:text-blue-300 hover:underline"
+                  >
+                    + Add Task
+                  </Link>
+                )}
               </div>
 
               {tasks.length === 0 ? (
                 <div className="py-10 text-center bg-slate-950/40 rounded-xl border border-dashed border-slate-800/60 flex flex-col items-center justify-center">
                   <p className="text-xs text-slate-500 font-medium mb-3">No tasks in this project yet.</p>
-                  <Link
-                    to={`/create-task?projectId=${project?.id}`}
-                    className="inline-flex items-center gap-1 px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-md transition-all cursor-pointer"
-                  >
-                    + Create First Task
-                  </Link>
+                  {canManageProject && (
+                    <Link
+                      to={`/create-task?projectId=${project?.id}`}
+                      className="inline-flex items-center gap-1 px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-md transition-all cursor-pointer"
+                    >
+                      + Create First Task
+                    </Link>
+                  )}
                 </div>
               ) : (
                 <div className="overflow-x-auto">

@@ -2,9 +2,11 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import Layout from '../components/Layout';
+import { useUserRole } from '../hooks/useUserRole';
 
 export default function CreateProject() {
   const navigate = useNavigate();
+  const { role, loading: roleLoading, isMember } = useUserRole();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -22,6 +24,11 @@ export default function CreateProject() {
   }, [success]);
 
   useEffect(() => {
+    if (!roleLoading && isMember) {
+      navigate('/dashboard', { state: { error: 'Access denied: Members cannot create projects.' }, replace: true });
+      return;
+    }
+
     const checkUser = async () => {
       try {
         const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -33,7 +40,7 @@ export default function CreateProject() {
       }
     };
     checkUser();
-  }, [navigate]);
+  }, [navigate, roleLoading, isMember]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();

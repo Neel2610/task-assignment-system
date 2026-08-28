@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
+import { useUserRole } from '../hooks/useUserRole';
 
 export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { role, isSuperAdmin, canManage } = useUserRole();
 
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
@@ -50,15 +52,15 @@ export default function Sidebar() {
   };
 
   const navLinks = [
-    { name: 'Dashboard', path: '/dashboard', aliases: ['/dashboard'], icon: '📊' },
-    { name: 'New Project', path: '/create-project', aliases: ['/create-project', '/new-project'], icon: '➕' },
-    { name: 'New Task', path: '/create-task', aliases: ['/create-task', '/new-task'], icon: '📝' },
-    { name: 'Task Board', path: '/kanban', aliases: ['/kanban', '/task-board'], icon: '📋' },
-    { name: 'Team', path: '/add-member', aliases: ['/add-member', '/team'], icon: '👥' },
-  ];
+    { name: 'Dashboard', path: '/dashboard', aliases: ['/dashboard'], icon: '📊', visible: true },
+    { name: 'New Project', path: '/create-project', aliases: ['/create-project', '/new-project'], icon: '➕', visible: canManage },
+    { name: 'New Task', path: '/create-task', aliases: ['/create-task', '/new-task'], icon: '📝', visible: canManage },
+    { name: 'Task Board', path: '/kanban', aliases: ['/kanban', '/task-board'], icon: '📋', visible: true },
+    { name: 'Team', path: '/add-member', aliases: ['/add-member', '/team'], icon: '👥', visible: isSuperAdmin },
+  ].filter((item) => item.visible);
 
-  const getRoleBadge = (role) => {
-    const r = role?.toLowerCase();
+  const getRoleBadge = (currentRole) => {
+    const r = (currentRole || role)?.toLowerCase();
     if (r === 'super_admin') {
       return (
         <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
@@ -86,7 +88,7 @@ export default function Sidebar() {
     currentUser?.email?.split('@')[0] ||
     'User';
 
-  const userRole = userProfile?.role || 'member';
+  const userRole = userProfile?.role || role || 'member';
   const userInitials = userName
     .split(' ')
     .map((n) => n[0])

@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
 import Layout from '../components/Layout';
+import { useUserRole } from '../hooks/useUserRole';
 
 export default function CreateTask() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const initialProjectId = searchParams.get('projectId') || '';
+  const { role, userId, loading: roleLoading, isSuperAdmin, isMember } = useUserRole();
 
   const [projects, setProjects] = useState([]);
   const [members, setMembers] = useState([]);
@@ -32,6 +34,11 @@ export default function CreateTask() {
   }, [success]);
 
   useEffect(() => {
+    if (!roleLoading && isMember) {
+      navigate('/dashboard', { state: { error: 'Access denied: Members cannot create tasks.' }, replace: true });
+      return;
+    }
+
     const fetchProjects = async () => {
       try {
         setFetchingData(true);
@@ -43,31 +50,35 @@ export default function CreateTask() {
           return;
         }
 
-        // Fetch owned projects + member projects
-        const { data: ownedProjects, error: ownedError } = await supabase
-          .from('projects')
-          .select('id, name')
-          .eq('owner_id', user.id);
+        // Fetch user profile to ensure up-to-date role
+        const { data: profile } = await supabase
+          .from('users')
+          .select('role')
+          .eq('id', user.id)
+          .single();
 
-        if (ownedError) throw ownedError;
+        const effectiveRole = profile?.role || role || 'member';
 
-        const { data: memberProjects, error: memberError } = await supabase
-          .from('project_members')
-          .select('project_id, projects(id, name)')
-          .eq('user_id', user.id);
+        if (effectiveRole === 'super_admin') {
+          // super_admin can select from all projects
+          const { data: allProjects, error: allProjectsErr } = await supabase
+            .from('projects')
+            .select('id, name')
+            .order('name', { ascending: true });
 
-        if (memberError) throw memberError;
+          if (allProjectsErr) throw allProjectsErr;
+          setProjects(allProjects || []);
+        } else {
+          // admin can only select from their own projects
+          const { data: ownedProjects, error: ownedError } = await supabase
+            .from('projects')
+            .select('id, name')
+            .eq('owner_id', user.id)
+            .order('name', { ascending: true });
 
-        const allProjects = [
-          ...(ownedProjects || []),
-          ...(memberProjects?.map((m) => m.projects).filter(Boolean) || []),
-        ];
-
-        const uniqueProjects = allProjects.filter(
-          (p, i, arr) => arr.findIndex((x) => x.id === p.id) === i
-        );
-
-        setProjects(uniqueProjects);
+          if (ownedError) throw ownedError;
+          setProjects(ownedProjects || []);
+        }
 
         // If pre-selected project is passed in URL query
         if (initialProjectId) {
@@ -81,8 +92,10 @@ export default function CreateTask() {
       }
     };
 
-    fetchProjects();
-  }, [navigate, initialProjectId]);
+    if (!roleLoading) {
+      fetchProjects();
+    }
+  }, [navigate, initialProjectId, roleLoading, isMember, role]);
 
   const loadMembersForProject = async (pId) => {
     if (!pId) {

@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { DragDropContext, Droppable, Draggable } from '@hello-pangea/dnd';
 import { supabase } from '../supabase';
 import Layout from '../components/Layout';
+import { useUserRole } from '../hooks/useUserRole';
 
 const COLUMNS = {
   todo: {
@@ -24,6 +25,8 @@ const COLUMNS = {
 
 export default function KanbanBoard() {
   const navigate = useNavigate();
+  const { role, userId, loading: roleLoading, isSuperAdmin, isAdmin, isMember, canManage } = useUserRole();
+
   const [tasks, setTasks] = useState([]);
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -56,9 +59,11 @@ export default function KanbanBoard() {
   }, [success]);
 
   useEffect(() => {
-    fetchTasks();
-    fetchUsersList();
-  }, []);
+    if (!roleLoading) {
+      fetchTasks();
+      fetchUsersList();
+    }
+  }, [roleLoading, role, userId]);
 
   const fetchUsersList = async () => {
     try {
@@ -81,10 +86,26 @@ export default function KanbanBoard() {
         return;
       }
 
-      const { data, error: fetchError } = await supabase
+      // Fetch user profile for authoritative role check
+      const { data: profile } = await supabase
+        .from('users')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+
+      const effectiveRole = profile?.role || role || 'member';
+
+      let query = supabase
         .from('tasks')
-        .select('*, users!assignee_id(id, full_name, email), projects(id, name)')
+        .select('*, users!tasks_assignee_id_fkey(full_name)')
         .order('created_at', { ascending: false });
+
+      // Member sees only tasks assigned to them
+      if (effectiveRole === 'member') {
+        query = query.eq('assignee_id', user.id);
+      }
+
+      const { data, error: fetchError } = await query;
 
       if (fetchError) throw fetchError;
 
@@ -114,6 +135,8 @@ export default function KanbanBoard() {
   };
 
   const onDragEnd = async (result) => {
+    if (isMember) return;
+
     const { destination, source, draggableId } = result;
 
     if (!destination) return;
@@ -188,7 +211,7 @@ export default function KanbanBoard() {
         .from('tasks')
         .update(updatePayload)
         .eq('id', selectedTask.id)
-        .select('*, users!assignee_id(id, full_name, email), projects(id, name)');
+        .select('*, users!tasks_assignee_id_fkey(full_name)');
 
       if (updateError) throw updateError;
 
@@ -271,12 +294,14 @@ export default function KanbanBoard() {
             <span>{refreshing ? 'Refreshing...' : 'Refresh'}</span>
           </button>
 
-          <Link
-            to="/create-task"
-            className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-lg shadow-blue-500/25 active:scale-95 transition-all cursor-pointer"
-          >
-            <span>+</span> New Task
-          </Link>
+          {canManage && (
+            <Link
+              to="/create-task"
+              className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-lg shadow-blue-500/25 active:scale-95 transition-all cursor-pointer"
+            >
+              <span>+</span> New Task
+            </Link>
+          )}
         </div>
       </header>
 
@@ -340,7 +365,7 @@ export default function KanbanBoard() {
                     </div>
 
                     {/* Column Droppable Area */}
-                    <Droppable droppableId={columnId}>
+                    <Droppable droppableId={columnId} isDropDisabled={isMember}>
                       {(provided, snapshot) => (
                         <div
                           ref={provided.innerRef}
@@ -359,6 +384,7 @@ export default function KanbanBoard() {
                                 key={task.id}
                                 draggableId={String(task.id)}
                                 index={index}
+                                isDragDisabled={isMember}
                               >
                                 {(provided, snapshot) => (
                                   <div
@@ -540,20 +566,22 @@ export default function KanbanBoard() {
                       Open Discussion & Comments →
                     </Link>
 
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => setConfirmDeleteModal(true)}
-                        className="px-3.5 py-2 text-xs font-semibold text-rose-400 hover:text-rose-300 bg-rose-950/30 hover:bg-rose-900/40 rounded-xl border border-rose-900/40 transition-all cursor-pointer"
-                      >
-                        Delete
-                      </button>
-                      <button
-                        onClick={() => setIsEditing(true)}
-                        className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-lg shadow-blue-500/25 transition-all cursor-pointer"
-                      >
-                        Edit Task
-                      </button>
-                    </div>
+                    {canManage && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => setConfirmDeleteModal(true)}
+                          className="px-3.5 py-2 text-xs font-semibold text-rose-400 hover:text-rose-300 bg-rose-950/30 hover:bg-rose-900/40 rounded-xl border border-rose-900/40 transition-all cursor-pointer"
+                        >
+                          Delete
+                        </button>
+                        <button
+                          onClick={() => setIsEditing(true)}
+                          className="px-4 py-2 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-lg shadow-blue-500/25 transition-all cursor-pointer"
+                        >
+                          Edit Task
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : (

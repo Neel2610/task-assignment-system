@@ -2,10 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { supabase } from '../supabase';
 import Layout from '../components/Layout';
+import { useUserRole } from '../hooks/useUserRole';
 
 export default function Dashboard() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { role, userId, isSuperAdmin, isAdmin, isMember, canManage } = useUserRole();
 
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
@@ -58,65 +60,91 @@ export default function Dashboard() {
         .eq('id', user.id)
         .single();
 
+      const effectiveRole = profile?.role || role || 'member';
+
       setUserProfile(
         profile || {
           full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
-          role: 'member',
+          role: effectiveRole,
           email: user.email,
         }
       );
 
-      // Fetch owned projects
-      const { data: ownedProjects, error: ownedError } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('owner_id', user.id);
+      let fetchedProjectList = [];
 
-      if (ownedError) throw ownedError;
+      if (effectiveRole === 'super_admin') {
+        // super_admin sees ALL projects in system
+        const { data: allProjects, error: allProjectsErr } = await supabase
+          .from('projects')
+          .select('*')
+          .order('created_at', { ascending: false });
 
-      // Fetch member projects via project_members table
-      const { data: memberProjects, error: memberError } = await supabase
-        .from('project_members')
-        .select('project_id, projects(*)')
-        .eq('user_id', user.id);
+        if (allProjectsErr) throw allProjectsErr;
+        fetchedProjectList = allProjects || [];
+      } else if (effectiveRole === 'admin') {
+        // admin sees only their owned projects and projects they are member of
+        const { data: ownedProjects, error: ownedError } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('owner_id', user.id);
 
-      if (memberError) throw memberError;
+        if (ownedError) throw ownedError;
 
-      // Extract projects from memberProjects records
-      let memberProjectList = (memberProjects || [])
-        .map((m) => m.projects)
-        .filter(Boolean);
+        const { data: memberProjects, error: memberError } = await supabase
+          .from('project_members')
+          .select('project_id')
+          .eq('user_id', user.id);
 
-      // Fallback: If relation join did not populate, fetch using project_id values
-      if (memberProjectList.length === 0 && memberProjects && memberProjects.length > 0) {
-        const memberProjectIds = memberProjects.map((m) => m.project_id).filter(Boolean);
+        if (memberError) throw memberError;
+
+        let memberProjectList = [];
+        const memberProjectIds = (memberProjects || [])
+          .map((m) => m.project_id)
+          .filter(Boolean);
+
         if (memberProjectIds.length > 0) {
-          const { data: directMemberProjects } = await supabase
+          const { data: fetchedProjects, error: projectsError } = await supabase
             .from('projects')
             .select('*')
             .in('id', memberProjectIds);
 
-          if (directMemberProjects) {
-            memberProjectList = directMemberProjects;
-          }
+          if (projectsError) throw projectsError;
+          memberProjectList = fetchedProjects || [];
+        }
+
+        const combined = [...(ownedProjects || []), ...memberProjectList];
+        fetchedProjectList = combined.filter(
+          (p, i, arr) => p && p.id && arr.findIndex((x) => x && x.id === p.id) === i
+        );
+      } else {
+        // member sees only projects they are member of
+        const { data: memberProjects, error: memberError } = await supabase
+          .from('project_members')
+          .select('project_id')
+          .eq('user_id', user.id);
+
+        if (memberError) throw memberError;
+
+        const memberProjectIds = (memberProjects || [])
+          .map((m) => m.project_id)
+          .filter(Boolean);
+
+        if (memberProjectIds.length > 0) {
+          const { data: fetchedProjects, error: projectsError } = await supabase
+            .from('projects')
+            .select('*')
+            .in('id', memberProjectIds);
+
+          if (projectsError) throw projectsError;
+          fetchedProjectList = fetchedProjects || [];
         }
       }
 
-      // Combine both arrays and remove duplicates by project id
-      const allProjects = [
-        ...(ownedProjects || []),
-        ...memberProjectList,
-      ];
-
-      const uniqueProjects = allProjects.filter(
-        (p, i, arr) => p && p.id && arr.findIndex((x) => x && x.id === p.id) === i
-      );
-
-      setProjects(uniqueProjects);
+      setProjects(fetchedProjectList);
 
       // Fetch member counts and task counts for all these projects
-      if (uniqueProjects.length > 0) {
-        const projectIds = uniqueProjects.map((p) => p.id);
+      if (fetchedProjectList.length > 0) {
+        const projectIds = fetchedProjectList.map((p) => p.id);
 
         const [{ data: memberRows }, { data: taskRows }] = await Promise.all([
           supabase.from('project_members').select('project_id').in('project_id', projectIds),
@@ -153,9 +181,19 @@ export default function Dashboard() {
     fetchUserAndProjects();
   }, [navigate]);
 
+  const canEditOrDelete = (project) => {
+    if (isSuperAdmin || userProfile?.role === 'super_admin') return true;
+    if ((isAdmin || userProfile?.role === 'admin') && (project.owner_id === userId || project.owner_id === currentUser?.id)) return true;
+    return false;
+  };
+
   // Open Edit Modal
   const handleOpenEdit = (e, project) => {
     e.stopPropagation();
+    if (!canEditOrDelete(project)) {
+      setError('You do not have permission to edit this project.');
+      return;
+    }
     setEditingProject(project);
     setEditName(project.name || '');
     setEditDescription(project.description || '');
@@ -205,6 +243,10 @@ export default function Dashboard() {
   // Open Delete Confirm
   const handleOpenDelete = (e, project) => {
     e.stopPropagation();
+    if (!canEditOrDelete(project)) {
+      setError('You do not have permission to delete this project.');
+      return;
+    }
     setDeletingProject(project);
   };
 
@@ -250,8 +292,8 @@ export default function Dashboard() {
     }
   };
 
-  const getRoleBadge = (role) => {
-    const normalizedRole = role?.toLowerCase();
+  const getRoleBadge = (r) => {
+    const normalizedRole = (r || role)?.toLowerCase();
     if (normalizedRole === 'super_admin') {
       return (
         <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30">
@@ -279,7 +321,7 @@ export default function Dashboard() {
     currentUser?.email?.split('@')[0] ||
     'User';
 
-  const userRole = userProfile?.role || 'member';
+  const currentEffectiveRole = userProfile?.role || role || 'member';
 
   // Counts summary
   const totalProjects = projects.length;
@@ -301,12 +343,14 @@ export default function Dashboard() {
             Overview of your workspace projects and team activity
           </p>
         </div>
-        <button
-          onClick={() => navigate('/create-project')}
-          className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-lg shadow-blue-600/30 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
-        >
-          <span className="text-sm leading-none font-bold">+</span> New Project
-        </button>
+        {canManage && (
+          <button
+            onClick={() => navigate('/create-project')}
+            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl shadow-lg shadow-blue-600/30 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
+          >
+            <span className="text-sm leading-none font-bold">+</span> New Project
+          </button>
+        )}
       </header>
 
       <main className="p-8 flex-1 font-sans">
@@ -317,7 +361,7 @@ export default function Dashboard() {
               <h2 className="text-2xl font-extrabold text-white tracking-tight m-0">
                 Welcome back, <span className="text-blue-400">{userName}</span>!
               </h2>
-              {getRoleBadge(userRole)}
+              {getRoleBadge(currentEffectiveRole)}
             </div>
             <p className="text-sm text-slate-400 mt-1.5 mb-0">
               Manage your workspace projects, track sprint tasks, and collaborate with your team.
@@ -396,14 +440,18 @@ export default function Dashboard() {
             </div>
             <h3 className="text-lg font-bold text-slate-100 mb-1.5">No projects found</h3>
             <p className="text-sm text-slate-400 mb-6 max-w-sm leading-relaxed">
-              You are not involved in any projects yet. Create your first project or get added to an existing one.
+              {canManage
+                ? 'You are not involved in any projects yet. Create your first project or get added to an existing one.'
+                : 'You are not assigned to any projects yet. Ask an admin or project manager to add you.'}
             </p>
-            <button
-              onClick={() => navigate('/create-project')}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold px-5 py-2.5 rounded-xl shadow-lg shadow-blue-600/30 transition-all cursor-pointer"
-            >
-              + Create Project
-            </button>
+            {canManage && (
+              <button
+                onClick={() => navigate('/create-project')}
+                className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-semibold px-5 py-2.5 rounded-xl shadow-lg shadow-blue-600/30 transition-all cursor-pointer"
+              >
+                + Create Project
+              </button>
+            )}
           </div>
         ) : (
           /* Projects Grid */
@@ -418,6 +466,7 @@ export default function Dashboard() {
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {projects.map((project, idx) => {
                 const stats = projectStats[project.id] || { memberCount: 0, taskCount: 0 };
+                const hasManageRights = canEditOrDelete(project);
 
                 return (
                   <div
@@ -435,27 +484,29 @@ export default function Dashboard() {
                           </h3>
                         </div>
 
-                        {/* Top-Right Action Icons (Edit & Delete) */}
-                        <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
-                          <button
-                            title="Edit Project"
-                            onClick={(e) => handleOpenEdit(e, project)}
-                            className="p-1.5 text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-700/60 rounded-lg border border-slate-700/50 transition-all cursor-pointer"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
-                          </button>
-                          <button
-                            title="Delete Project"
-                            onClick={(e) => handleOpenDelete(e, project)}
-                            className="p-1.5 text-rose-400 hover:text-rose-200 bg-rose-950/30 hover:bg-rose-900/40 rounded-lg border border-rose-900/40 transition-all cursor-pointer"
-                          >
-                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        </div>
+                        {/* Top-Right Action Icons (Edit & Delete - only for super_admin or project owner admin) */}
+                        {hasManageRights && (
+                          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            <button
+                              title="Edit Project"
+                              onClick={(e) => handleOpenEdit(e, project)}
+                              className="p-1.5 text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-700/60 rounded-lg border border-slate-700/50 transition-all cursor-pointer"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                              </svg>
+                            </button>
+                            <button
+                              title="Delete Project"
+                              onClick={(e) => handleOpenDelete(e, project)}
+                              className="p-1.5 text-rose-400 hover:text-rose-200 bg-rose-950/30 hover:bg-rose-900/40 rounded-lg border border-rose-900/40 transition-all cursor-pointer"
+                            >
+                              <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          </div>
+                        )}
                       </div>
 
                       {/* Status badge */}
