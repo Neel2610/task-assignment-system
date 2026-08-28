@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { supabase } from '../supabase';
-import Sidebar from '../components/Sidebar';
+import Layout from '../components/Layout';
 
 export default function Dashboard() {
   const navigate = useNavigate();
@@ -100,137 +100,182 @@ export default function Dashboard() {
     switch (status?.toLowerCase()) {
       case 'active':
       case 'in progress':
-        return 'bg-green-100 text-green-800 border-green-300';
+      case 'in_progress':
+        return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 shadow-sm shadow-emerald-500/10';
       case 'on_hold':
       case 'on hold':
       case 'pending':
-        return 'bg-yellow-100 text-yellow-800 border-yellow-300';
+        return 'bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-sm shadow-amber-500/10';
       case 'completed':
-        return 'bg-blue-100 text-blue-800 border-blue-300';
+        return 'bg-blue-500/10 text-blue-400 border-blue-500/20 shadow-sm shadow-blue-500/10';
       default:
-        return 'bg-slate-100 text-slate-800 border-slate-300';
+        return 'bg-slate-500/10 text-slate-400 border-slate-500/20';
     }
   };
 
   return (
-    <div className="min-h-screen flex bg-slate-50 font-sans text-slate-900 antialiased text-left w-full">
-      <Sidebar />
+    <Layout>
+      <header className="h-16 border-b border-slate-800/60 bg-slate-950/40 backdrop-blur-md px-8 flex items-center justify-between sticky top-0 z-20">
+        <div>
+          <h1 className="text-xl font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent tracking-tight m-0 leading-tight">
+            Dashboard Overview
+          </h1>
+          <p className="text-xs text-slate-400 font-medium mt-0.5">Overview of your workspace projects</p>
+        </div>
+        <button
+          onClick={() => navigate('/create-project')}
+          className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-medium px-5 py-2.5 rounded-xl shadow-lg shadow-blue-600/30 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
+        >
+          <span className="text-base leading-none font-bold">+</span> Create Project
+        </button>
+      </header>
 
-      <div className="flex-1 flex flex-col min-w-0 bg-slate-50">
-        <header className="h-16 border-b border-slate-200 bg-white px-8 flex items-center justify-between sticky top-0 z-10 shadow-xs">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight m-0 leading-tight">
-              Dashboard
-            </h1>
-            <p className="text-xs text-slate-500 font-medium">Overview of your workspace projects</p>
+      <main className="p-8 flex-1">
+        {error && (
+          <div className="mb-6 bg-red-950/20 border border-red-900/50 p-4 rounded-xl text-sm font-semibold text-red-300 flex items-center gap-2">
+            <span>⚠️</span> {error}
           </div>
-          <button
-            onClick={() => navigate('/create-project')}
-            className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 rounded-lg shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer"
-          >
-            <span className="text-base leading-none font-bold">+</span> Create Project
-          </button>
-        </header>
+        )}
 
-        <main className="p-8 flex-1">
-          {error && (
-            <div className="mb-6 bg-red-50 border border-red-200 p-4 rounded-xl text-sm font-semibold text-red-700 flex items-center gap-2">
-              <span>⚠️</span> {error}
+        {loading ? (
+          /* Premium Skeleton Loader Grid */
+          <div>
+            <div className="mb-6 h-6 w-32 bg-slate-800/50 rounded-md animate-pulse"></div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {[1, 2, 3].map((n) => (
+                <div
+                  key={n}
+                  className="bg-slate-900/40 border border-slate-800/80 rounded-2xl p-6 h-[220px] flex flex-col justify-between animate-pulse"
+                >
+                  <div>
+                    <div className="flex justify-between items-start gap-3 mb-4">
+                      <div className="h-5 w-1/2 bg-slate-800/60 rounded"></div>
+                      <div className="h-5 w-16 bg-slate-800/60 rounded-full"></div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="h-3 w-full bg-slate-800/40 rounded"></div>
+                      <div className="h-3 w-5/6 bg-slate-800/40 rounded"></div>
+                    </div>
+                  </div>
+                  <div className="pt-4 border-t border-slate-800/60 flex items-center justify-between">
+                    <div className="flex gap-2">
+                      <div className="h-6 w-12 bg-slate-800/60 rounded"></div>
+                      <div className="h-6 w-12 bg-slate-800/60 rounded"></div>
+                    </div>
+                    <div className="h-4 w-16 bg-slate-800/60 rounded"></div>
+                  </div>
+                </div>
+              ))}
             </div>
-          )}
+          </div>
+        ) : projects.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 px-6 bg-slate-900/40 backdrop-blur-md border border-dashed border-slate-800 rounded-2xl max-w-xl mx-auto text-center mt-6 shadow-xl">
+            <div className="w-14 h-14 rounded-full bg-blue-500/10 text-blue-400 flex items-center justify-center text-2xl font-bold mb-4 border border-blue-500/20 shadow-lg shadow-blue-500/5">
+              📁
+            </div>
+            <h3 className="text-lg font-bold text-slate-100 mb-1">No projects found</h3>
+            <p className="text-sm text-slate-400 mb-6 max-w-sm leading-relaxed">
+              Get started by creating your first project to manage team tasks and track progress.
+            </p>
+            <button
+              onClick={() => navigate('/create-project')}
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-medium px-5 py-2.5 rounded-xl shadow-lg shadow-blue-600/30 transition-all cursor-pointer"
+            >
+              + Create Project
+            </button>
+          </div>
+        ) : (
+          <div>
+            <div className="mb-6 flex items-center justify-between">
+              <h2 className="text-lg font-bold text-slate-200 m-0">Your Projects</h2>
+              <span className="text-xs font-semibold px-3 py-1 bg-slate-800/60 text-slate-300 border border-slate-700/50 rounded-full">
+                Total: {projects.length}
+              </span>
+            </div>
 
-          {loading ? (
-            <div className="flex flex-col justify-center items-center py-28">
-              <div className="animate-spin rounded-full h-10 w-10 border-4 border-slate-200 border-t-blue-600"></div>
-              <p className="mt-4 text-sm font-medium text-slate-600">Loading your projects...</p>
-            </div>
-          ) : projects.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-20 px-4 bg-white border-2 border-dashed border-slate-300 rounded-2xl max-w-xl mx-auto text-center mt-6 shadow-sm">
-              <div className="w-14 h-14 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center text-2xl font-bold mb-4 border border-blue-100">
-                📁
-              </div>
-              <h3 className="text-lg font-bold text-slate-900 mb-1">No projects found</h3>
-              <p className="text-sm text-slate-600 mb-6 max-w-sm">
-                Get started by creating your first project to manage team tasks and track progress.
-              </p>
-              <button
-                onClick={() => navigate('/create-project')}
-                className="inline-flex items-center gap-2 px-5 py-2.5 text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 rounded-lg shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer"
-              >
-                <span>+</span> Create Project
-              </button>
-            </div>
-          ) : (
-            <div>
-              <div className="mb-6 flex items-center justify-between">
-                <h2 className="text-lg font-bold text-slate-900 m-0">Your Projects</h2>
-                <span className="text-xs font-semibold px-3 py-1 bg-slate-200/70 text-slate-700 border border-slate-300/60 rounded-full">
-                  Total: {projects.length}
-                </span>
-              </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {projects.map((project, idx) => (
+                <div
+                  key={project.id}
+                  style={{ animationDelay: `${idx * 75}ms` }}
+                  className="opacity-0 animate-fade-in-up bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 shadow-xl transition-all duration-300 hover:border-blue-500/40 hover:-translate-y-1 hover:shadow-2xl hover:shadow-blue-500/10 flex flex-col justify-between"
+                >
+                  <div>
+                    <div className="flex justify-between items-start gap-3 mb-3">
+                      <h3 className="text-base font-bold text-slate-100 leading-snug m-0 line-clamp-1">
+                        <Link
+                          to={`/project/${project.id}`}
+                          className="hover:text-blue-400 transition-colors"
+                        >
+                          {project.name}
+                        </Link>
+                      </h3>
+                      {project.status && (
+                        <span
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border capitalize shrink-0 ${getStatusBadgeColor(
+                            project.status
+                          )}`}
+                        >
+                          {project.status.replace('_', ' ')}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-sm font-normal text-slate-400 line-clamp-3 leading-relaxed mb-6">
+                      {project.description || 'No description provided for this project.'}
+                    </p>
+                  </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {projects.map((project) => (
-                  <div
-                    key={project.id}
-                    className="bg-white border border-slate-200 rounded-xl p-6 shadow-sm hover:shadow-md transition-shadow flex flex-col justify-between"
-                  >
-                    <div>
-                      <div className="flex justify-between items-start gap-3 mb-3">
-                        <h3 className="text-base font-bold text-slate-900 leading-snug m-0 line-clamp-1">
-                          <Link
-                            to={`/project/${project.id}`}
-                            className="hover:text-blue-600 hover:underline transition-colors"
-                          >
-                            {project.name}
-                          </Link>
-                        </h3>
-                        {project.status && (
-                          <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border capitalize shrink-0 ${getStatusBadgeColor(
-                              project.status
-                            )}`}
-                          >
-                            {project.status.replace('_', ' ')}
-                          </span>
-                        )}
+                  <div>
+                    {/* Visual progress track representing completed actions/tasks */}
+                    <div className="mb-4">
+                      <div className="flex justify-between text-[10px] text-slate-500 mb-1">
+                        <span>Project Progress</span>
+                        <span>{project.status?.toLowerCase() === 'completed' ? '100%' : 'In Progress'}</span>
                       </div>
-                      <p className="text-sm font-normal text-slate-600 line-clamp-3 leading-relaxed mb-4">
-                        {project.description || 'No description provided for this project.'}
-                      </p>
+                      <div className="w-full h-1 bg-slate-800/60 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full rounded-full transition-all duration-500 ${
+                            project.status?.toLowerCase() === 'completed'
+                              ? 'w-full bg-blue-500'
+                              : project.status?.toLowerCase() === 'on_hold' || project.status?.toLowerCase() === 'on hold'
+                              ? 'w-1/3 bg-amber-500'
+                              : 'w-2/3 bg-emerald-500'
+                          }`}
+                        />
+                      </div>
                     </div>
 
-                    <div className="pt-4 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <div className="pt-4 border-t border-slate-800/60 flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2">
                         <button
                           onClick={() => navigate(`/create-project?edit=${project.id}`)}
-                          className="px-2.5 py-1 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded border border-slate-300 transition-colors cursor-pointer"
+                          className="px-3 py-1.5 text-xs font-semibold text-slate-300 hover:text-white bg-slate-800/50 hover:bg-slate-700/50 rounded-lg border border-slate-700/60 hover:border-slate-600 transition-all duration-200 cursor-pointer"
                         >
                           Edit
                         </button>
                         <button
                           onClick={() => handleDeleteProject(project.id)}
-                          className="px-2.5 py-1 text-xs font-semibold text-red-600 bg-red-50 hover:bg-red-100 rounded border border-red-200 transition-colors cursor-pointer"
+                          className="px-3 py-1.5 text-xs font-semibold text-red-400 hover:text-red-300 bg-red-950/20 hover:bg-red-900/30 rounded-lg border border-red-900/40 hover:border-red-800 transition-all duration-200 cursor-pointer"
                         >
                           Delete
                         </button>
                       </div>
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center">
                         <Link
                           to={`/project/${project.id}`}
-                          className="inline-flex items-center gap-1 font-semibold text-blue-600 hover:text-blue-700 hover:underline"
+                          className="inline-flex items-center gap-1 font-semibold text-blue-400 hover:text-blue-300 transition-all group cursor-pointer"
                         >
-                          Details →
+                          Details <span className="transform group-hover:translate-x-1 transition-transform duration-200">→</span>
                         </Link>
                       </div>
                     </div>
                   </div>
-                ))}
-              </div>
+                </div>
+              ))}
             </div>
-          )}
-        </main>
-      </div>
-    </div>
+          </div>
+        )}
+      </main>
+    </Layout>
   );
 }

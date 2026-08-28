@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
-import Sidebar from '../components/Sidebar';
+import Layout from '../components/Layout';
 
 export default function AddMember() {
   const navigate = useNavigate();
@@ -21,7 +21,6 @@ export default function AddMember() {
       try {
         setFetchingProjects(true);
         setError(null);
-
         const {
           data: { user },
           error: userError,
@@ -37,7 +36,6 @@ export default function AddMember() {
           .select('id, name');
 
         if (projectsError) throw projectsError;
-
         setProjects(data || []);
       } catch (err) {
         setError(err.message || 'Failed to load projects.');
@@ -78,7 +76,7 @@ export default function AddMember() {
         return;
       }
 
-      // 1. Check if user with memberEmail exists in users table
+      // Check if target user exists in users table
       const { data: usersData, error: userFetchError } = await supabase
         .from('users')
         .select('*')
@@ -89,7 +87,7 @@ export default function AddMember() {
       const foundUser = usersData && usersData.length > 0 ? usersData[0] : null;
 
       if (foundUser) {
-        // Check if member already exists in project
+        // Check if member already exists in this project
         const { data: existingMember, error: existingError } = await supabase
           .from('project_members')
           .select('*')
@@ -99,7 +97,7 @@ export default function AddMember() {
         if (existingError) throw existingError;
 
         if (existingMember && existingMember.length > 0) {
-          setError('This member is already added to the project.');
+          setError('This member is already assigned to the selected project.');
           return;
         }
 
@@ -115,9 +113,22 @@ export default function AddMember() {
           ]);
 
         if (insertMemberError) throw insertMemberError;
-
-        setSuccess(`User ${memberEmail} successfully added to project!`);
+        setSuccess(`User ${memberEmail} successfully added to the project!`);
       } else {
+        // Check if a pending invite already exists
+        const { data: existingInvite, error: inviteCheckErr } = await supabase
+          .from('invites')
+          .select('*')
+          .eq('project_id', selectedProjectId)
+          .eq('invited_email', memberEmail)
+          .eq('status', 'pending');
+
+        if (inviteCheckErr) throw inviteCheckErr;
+        if (existingInvite && existingInvite.length > 0) {
+          setError('A pending invitation has already been sent to this email.');
+          return;
+        }
+
         // User does not exist, insert into invites table
         const { error: insertInviteError } = await supabase
           .from('invites')
@@ -131,136 +142,121 @@ export default function AddMember() {
           ]);
 
         if (insertInviteError) throw insertInviteError;
-
-        setSuccess(`Invite sent to ${memberEmail}!`);
+        setSuccess(`Invitation successfully sent to ${memberEmail}!`);
       }
 
       // Reset form fields
       setMemberEmail('');
       setRoleInProject('member');
     } catch (err) {
-      setError(err.message || 'An error occurred while adding member.');
+      setError(err.message || 'An error occurred while adding the member.');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="min-h-screen flex bg-slate-50 font-sans text-slate-900 antialiased text-left w-full">
-      <Sidebar />
+    <Layout>
+      <div className="max-w-2xl mx-auto space-y-6">
+        <div>
+          <h1 className="text-2xl font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent tracking-tight">
+            Add Project Member
+          </h1>
+          <p className="text-sm text-slate-400">
+            Assign existing registered users or send project invitations via email.
+          </p>
+        </div>
 
-      <div className="flex-1 flex flex-col min-w-0 bg-slate-50">
-        <header className="h-16 border-b border-slate-200 bg-white px-8 flex items-center justify-between sticky top-0 z-10 shadow-xs">
-          <div>
-            <h1 className="text-xl font-bold text-slate-900 tracking-tight m-0 leading-tight">
-              Add Project Member
-            </h1>
-            <p className="text-xs text-slate-500 font-medium">
-              Invite or assign members to existing projects
-            </p>
+        {error && (
+          <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 flex items-start space-x-3">
+            <span className="text-rose-400 font-bold text-sm">!</span>
+            <span className="text-sm font-medium text-rose-300">{error}</span>
           </div>
-        </header>
+        )}
 
-        <main className="p-8 flex-1 flex justify-center items-start">
+        {success && (
+          <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-start space-x-3">
+            <span className="text-emerald-400 font-bold text-sm">✓</span>
+            <span className="text-sm font-medium text-emerald-300">{success}</span>
+          </div>
+        )}
+
+        <div className="bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 sm:p-8 shadow-xl">
           {fetchingProjects ? (
-            <div className="flex flex-col justify-center items-center py-20">
-              <div className="animate-spin rounded-full h-10 w-10 border-4 border-slate-200 border-t-blue-600"></div>
-              <p className="mt-4 text-sm font-medium text-slate-600">Loading projects...</p>
+            <div className="flex flex-col justify-center items-center py-12">
+              <div className="animate-spin rounded-full h-8 w-8 border-2 border-slate-700 border-t-blue-500" />
+              <p className="mt-3 text-xs font-medium text-slate-400">Loading projects...</p>
             </div>
           ) : (
-            <div className="w-full max-w-2xl bg-white p-8 rounded-2xl shadow-sm border border-slate-200">
-              <h2 className="text-xl font-bold text-slate-900 mb-6 m-0 border-b border-slate-100 pb-4">
-                Member Details
-              </h2>
+            <form onSubmit={handleSubmit} className="space-y-5">
+              <div>
+                <label htmlFor="project" className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                  Select Project <span className="text-rose-400">*</span>
+                </label>
+                <select
+                  id="project"
+                  value={selectedProjectId}
+                  onChange={(e) => setSelectedProjectId(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all cursor-pointer"
+                >
+                  <option value="">Select a project</option>
+                  {projects.map((project) => (
+                    <option key={project.id} value={project.id}>
+                      {project.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-              {error && (
-                <div className="mb-6 p-4 rounded-lg bg-red-50 border border-red-200 flex items-start space-x-3">
-                  <span className="text-red-600 font-bold text-base leading-none">!</span>
-                  <div className="text-sm font-medium text-red-800 leading-tight">
-                    {error}
-                  </div>
-                </div>
-              )}
+              <div>
+                <label htmlFor="memberEmail" className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                  Member Email <span className="text-rose-400">*</span>
+                </label>
+                <input
+                  id="memberEmail"
+                  type="email"
+                  value={memberEmail}
+                  onChange={(e) => setMemberEmail(e.target.value)}
+                  placeholder="user@example.com"
+                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 placeholder-slate-500 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+                />
+              </div>
 
-              {success && (
-                <div className="mb-6 p-4 rounded-lg bg-emerald-50 border border-emerald-200 flex items-start space-x-3">
-                  <span className="text-emerald-600 font-bold text-base leading-none">✓</span>
-                  <div className="text-sm font-medium text-emerald-800 leading-tight">
-                    {success}
-                  </div>
-                </div>
-              )}
+              <div>
+                <label htmlFor="roleInProject" className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                  Role in Project
+                </label>
+                <select
+                  id="roleInProject"
+                  value={roleInProject}
+                  onChange={(e) => setRoleInProject(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-950 border border-slate-800 rounded-xl text-slate-200 text-sm font-medium focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all cursor-pointer"
+                >
+                  <option value="member">Member</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
 
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div>
-                  <label htmlFor="project" className="block text-sm font-semibold text-slate-900 mb-2">
-                    Select Project <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    id="project"
-                    value={selectedProjectId}
-                    onChange={(e) => setSelectedProjectId(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-sm font-medium shadow-xs focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 cursor-pointer"
-                  >
-                    <option value="">Select a project</option>
-                    {projects.map((project) => (
-                      <option key={project.id} value={project.id}>
-                        {project.name}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label htmlFor="memberEmail" className="block text-sm font-semibold text-slate-900 mb-2">
-                    Member Email <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    id="memberEmail"
-                    type="email"
-                    value={memberEmail}
-                    onChange={(e) => setMemberEmail(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 placeholder-slate-400 text-sm font-medium shadow-xs focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600"
-                    placeholder="user@example.com"
-                  />
-                </div>
-
-                <div>
-                  <label htmlFor="roleInProject" className="block text-sm font-semibold text-slate-900 mb-2">
-                    Role in Project
-                  </label>
-                  <select
-                    id="roleInProject"
-                    value={roleInProject}
-                    onChange={(e) => setRoleInProject(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-white border border-slate-300 rounded-lg text-slate-900 text-sm font-medium shadow-xs focus:outline-none focus:ring-2 focus:ring-blue-600 focus:border-blue-600 cursor-pointer"
-                  >
-                    <option value="member">Member</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                </div>
-
-                <div className="pt-2">
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 active:bg-blue-800 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed transition-colors cursor-pointer"
-                  >
-                    {loading ? (
-                      <div className="flex items-center space-x-2">
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                        <span>Adding Member...</span>
-                      </div>
-                    ) : (
-                      'Add Member'
-                    )}
-                  </button>
-                </div>
-              </form>
-            </div>
+              <div className="pt-3">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="w-full flex justify-center items-center py-3 px-4 rounded-xl text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 active:scale-[0.99] shadow-lg shadow-blue-600/25 disabled:opacity-60 disabled:cursor-not-allowed transition-all cursor-pointer"
+                >
+                  {loading ? (
+                    <div className="flex items-center space-x-2">
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <span>Processing...</span>
+                    </div>
+                  ) : (
+                    'Add / Invite Member'
+                  )}
+                </button>
+              </div>
+            </form>
           )}
-        </main>
+        </div>
       </div>
-    </div>
+    </Layout>
   );
 }
