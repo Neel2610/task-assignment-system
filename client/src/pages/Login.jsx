@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import ParticleBackground from '../components/ParticleBackground';
 
@@ -136,13 +136,7 @@ export default function Login() {
         </form>
 
         <div className="mt-8 pt-6 border-t border-slate-800/60 text-center text-sm text-slate-400">
-          Don't have an account?{' '}
-          <Link
-            to="/signup"
-            className="font-semibold text-blue-400 hover:text-blue-300 underline-offset-4 hover:underline transition-colors"
-          >
-            Sign up
-          </Link>
+          Contact your administrator to get access
         </div>
       </div>
     </div>

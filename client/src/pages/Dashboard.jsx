@@ -1,18 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { supabase } from '../supabase';
 import Layout from '../components/Layout';
 
 export default function Dashboard() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const [currentUser, setCurrentUser] = useState(null);
+  const [userProfile, setUserProfile] = useState(null);
   const [projects, setProjects] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [error, setError] = useState(location.state?.error || null);
 
   const fetchUserAndProjects = async () => {
     try {
       setLoading(true);
-      setError(null);
+      setError(location.state?.error || null);
 
       // Check login status
       const {
@@ -24,6 +28,23 @@ export default function Dashboard() {
         navigate('/');
         return;
       }
+
+      setCurrentUser(user);
+
+      // Fetch user profile from users table
+      const { data: profile } = await supabase
+        .from('users')
+        .select('*')
+        .eq('id', user.id)
+        .single();
+
+      setUserProfile(
+        profile || {
+          full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'User',
+          role: 'member',
+          email: user.email,
+        }
+      );
 
       // Fetch owned projects
       const { data: ownedProjects, error: ownedError } = await supabase
@@ -113,6 +134,37 @@ export default function Dashboard() {
     }
   };
 
+  const getRoleBadge = (role) => {
+    const normalizedRole = role?.toLowerCase();
+    if (normalizedRole === 'super_admin') {
+      return (
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-purple-500/15 text-purple-300 border border-purple-500/30 shadow-sm shadow-purple-500/10">
+          Super Admin
+        </span>
+      );
+    }
+    if (normalizedRole === 'admin') {
+      return (
+        <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-blue-500/15 text-blue-300 border border-blue-500/30 shadow-sm shadow-blue-500/10">
+          Admin
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-semibold bg-slate-500/15 text-slate-300 border border-slate-500/30">
+        Member
+      </span>
+    );
+  };
+
+  const userName =
+    userProfile?.full_name ||
+    currentUser?.user_metadata?.full_name ||
+    currentUser?.email?.split('@')[0] ||
+    'User';
+
+  const userRole = userProfile?.role || 'member';
+
   return (
     <Layout>
       <header className="h-16 border-b border-slate-800/60 bg-slate-950/40 backdrop-blur-md px-8 flex items-center justify-between sticky top-0 z-20">
@@ -120,7 +172,9 @@ export default function Dashboard() {
           <h1 className="text-xl font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent tracking-tight m-0 leading-tight">
             Dashboard Overview
           </h1>
-          <p className="text-xs text-slate-400 font-medium mt-0.5">Overview of your workspace projects</p>
+          <p className="text-xs text-slate-400 font-medium mt-0.5">
+            Overview of your workspace projects
+          </p>
         </div>
         <button
           onClick={() => navigate('/create-project')}
@@ -131,6 +185,21 @@ export default function Dashboard() {
       </header>
 
       <main className="p-8 flex-1">
+        {/* Welcome message & User Role Badge */}
+        <div className="mb-8 p-6 rounded-2xl bg-gradient-to-r from-slate-900/80 via-slate-900/40 to-slate-900/80 backdrop-blur-md border border-slate-800/80 shadow-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <div className="flex items-center gap-3">
+              <h2 className="text-2xl font-extrabold text-white tracking-tight">
+                Welcome back, <span className="text-blue-400">{userName}</span>!
+              </h2>
+              {getRoleBadge(userRole)}
+            </div>
+            <p className="text-sm text-slate-400 mt-1">
+              Here is what's happening across your projects and workspace tasks today.
+            </p>
+          </div>
+        </div>
+
         {error && (
           <div className="mb-6 bg-red-950/20 border border-red-900/50 p-4 rounded-xl text-sm font-semibold text-red-300 flex items-center gap-2">
             <span>⚠️</span> {error}
@@ -138,7 +207,7 @@ export default function Dashboard() {
         )}
 
         {loading ? (
-          /* Premium Skeleton Loader Grid */
+          /* Skeleton Loader Grid */
           <div>
             <div className="mb-6 h-6 w-32 bg-slate-800/50 rounded-md animate-pulse"></div>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -226,18 +295,22 @@ export default function Dashboard() {
                   </div>
 
                   <div>
-                    {/* Visual progress track representing completed actions/tasks */}
                     <div className="mb-4">
                       <div className="flex justify-between text-[10px] text-slate-500 mb-1">
                         <span>Project Progress</span>
-                        <span>{project.status?.toLowerCase() === 'completed' ? '100%' : 'In Progress'}</span>
+                        <span>
+                          {project.status?.toLowerCase() === 'completed'
+                            ? '100%'
+                            : 'In Progress'}
+                        </span>
                       </div>
                       <div className="w-full h-1 bg-slate-800/60 rounded-full overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all duration-500 ${
                             project.status?.toLowerCase() === 'completed'
                               ? 'w-full bg-blue-500'
-                              : project.status?.toLowerCase() === 'on_hold' || project.status?.toLowerCase() === 'on hold'
+                              : project.status?.toLowerCase() === 'on_hold' ||
+                                project.status?.toLowerCase() === 'on hold'
                               ? 'w-1/3 bg-amber-500'
                               : 'w-2/3 bg-emerald-500'
                           }`}
@@ -248,7 +321,9 @@ export default function Dashboard() {
                     <div className="pt-4 border-t border-slate-800/60 flex items-center justify-between text-xs">
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => navigate(`/create-project?edit=${project.id}`)}
+                          onClick={() =>
+                            navigate(`/create-project?edit=${project.id}`)
+                          }
                           className="px-3 py-1.5 text-xs font-semibold text-slate-300 hover:text-white bg-slate-800/50 hover:bg-slate-700/50 rounded-lg border border-slate-700/60 hover:border-slate-600 transition-all duration-200 cursor-pointer"
                         >
                           Edit
@@ -265,7 +340,10 @@ export default function Dashboard() {
                           to={`/project/${project.id}`}
                           className="inline-flex items-center gap-1 font-semibold text-blue-400 hover:text-blue-300 transition-all group cursor-pointer"
                         >
-                          Details <span className="transform group-hover:translate-x-1 transition-transform duration-200">→</span>
+                          Details{' '}
+                          <span className="transform group-hover:translate-x-1 transition-transform duration-200">
+                            →
+                          </span>
                         </Link>
                       </div>
                     </div>
