@@ -99,6 +99,19 @@ export default function CreateProject() {
         }
       }
 
+      try {
+        await fetch('http://localhost:3001/api/log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'Project Created',
+            user: 'current user',
+            page: 'Create Project',
+            details: `New project created`
+          })
+        });
+      } catch { /* ignore */ }
+
       setSuccess('Project created successfully! Redirecting to dashboard...');
       setTitle('');
       setDescription('');

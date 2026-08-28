@@ -45,6 +45,10 @@ export default function AddMember() {
   }, [success]);
 
   useEffect(() => {
+    fetchAllTeamMembers();
+  }, []);
+
+  useEffect(() => {
     if (!roleLoading) {
       if (isMember) {
         navigate('/dashboard', { state: { error: 'Access denied' }, replace: true });
@@ -343,6 +347,20 @@ export default function AddMember() {
         Member
       </span>
     );
+  };
+
+  const fetchAllTeamMembers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('users')
+        .select('id, full_name, email, role')
+        .order('full_name', { ascending: true });
+
+      if (error) throw error;
+      setTeamMembers(data || []);
+    } catch (err) {
+      console.error('Failed to fetch team members:', err.message);
+    }
   };
 
   const filteredMembers = teamMembers.filter((m) => {

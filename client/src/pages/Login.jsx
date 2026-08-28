@@ -38,6 +38,19 @@ export default function Login() {
         throw signInError;
       }
 
+      try {
+        await fetch('http://localhost:3001/api/log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'User Login',
+            user: email,
+            page: 'Login',
+            details: 'Successful authentication'
+          })
+        });
+      } catch { /* server may not be running */ }
+
       navigate('/dashboard');
     } catch (err) {
       setError(err.message || 'Invalid email or password.');

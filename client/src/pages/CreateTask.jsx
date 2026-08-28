@@ -173,6 +173,19 @@ export default function CreateTask() {
         throw insertError;
       }
 
+      try {
+        await fetch('http://localhost:3001/api/log', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'Task Created',
+            user: 'current user',
+            page: 'Create Task',
+            details: `New task created`
+          })
+        });
+      } catch { /* ignore */ }
+
       setSuccess(`Task created successfully with token ${taskToken}!`);
 
       // Reset form after successful submission

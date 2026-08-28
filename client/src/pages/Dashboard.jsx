@@ -37,6 +37,14 @@ export default function Dashboard() {
 
   const fetchUserAndProjects = async () => {
     try {
+      try {
+        const res = await fetch('http://localhost:3001/api/app-info');
+        const info = await res.json();
+        console.log('TaskFlow Server Connected:', info.name, info.version);
+      } catch {
+        console.log('Running without Node server');
+      }
+
       setLoading(true);
       setError(null);
 
