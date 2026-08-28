@@ -251,7 +251,7 @@ export default function ProjectDetail() {
                 {canManageProject && (
                   <div className="flex items-center gap-3 shrink-0">
                     <Link
-                      to={`/create-task?projectId=${project?.id}`}
+                      to={`/create-task?project=${project?.id || projectId}`}
                       className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-lg shadow-blue-500/25 active:scale-95 transition-all cursor-pointer"
                     >
                       <span>+</span> Add Task
@@ -359,7 +359,7 @@ export default function ProjectDetail() {
                 </h3>
                 {canManageProject && (
                   <Link
-                    to={`/create-task?projectId=${project?.id}`}
+                    to={`/create-task?project=${project?.id || projectId}`}
                     className="text-xs font-semibold text-blue-400 hover:text-blue-300 hover:underline"
                   >
                     + Add Task
@@ -372,7 +372,7 @@ export default function ProjectDetail() {
                   <p className="text-xs text-slate-500 font-medium mb-3">No tasks in this project yet.</p>
                   {canManageProject && (
                     <Link
-                      to={`/create-task?projectId=${project?.id}`}
+                      to={`/create-task?project=${project?.id || projectId}`}
                       className="inline-flex items-center gap-1 px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-md transition-all cursor-pointer"
                     >
                       + Create First Task

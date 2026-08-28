@@ -7,13 +7,13 @@ import { useUserRole } from '../hooks/useUserRole';
 export default function CreateTask() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const initialProjectId = searchParams.get('projectId') || '';
-  const { role, userId, loading: roleLoading, isSuperAdmin, isMember } = useUserRole();
+  const preselectedProject = searchParams.get('project') || searchParams.get('projectId') || '';
+  const { role, loading: roleLoading, isMember } = useUserRole();
 
   const [projects, setProjects] = useState([]);
   const [members, setMembers] = useState([]);
 
-  const [selectedProjectId, setSelectedProjectId] = useState(initialProjectId);
+  const [selectedProjectId, setSelectedProjectId] = useState(preselectedProject);
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [assigneeId, setAssigneeId] = useState('');
@@ -28,7 +28,7 @@ export default function CreateTask() {
 
   useEffect(() => {
     if (success) {
-      const timer = setTimeout(() => setSuccess(null), 3000);
+      const timer = setTimeout(() => setSuccess(null), 4000);
       return () => clearTimeout(timer);
     }
   }, [success]);
@@ -50,7 +50,6 @@ export default function CreateTask() {
           return;
         }
 
-        // Fetch user profile to ensure up-to-date role
         const { data: profile } = await supabase
           .from('users')
           .select('role')
@@ -59,17 +58,16 @@ export default function CreateTask() {
 
         const effectiveRole = profile?.role || role || 'member';
 
+        let availableProjects = [];
         if (effectiveRole === 'super_admin') {
-          // super_admin can select from all projects
           const { data: allProjects, error: allProjectsErr } = await supabase
             .from('projects')
             .select('id, name')
             .order('name', { ascending: true });
 
           if (allProjectsErr) throw allProjectsErr;
-          setProjects(allProjects || []);
+          availableProjects = allProjects || [];
         } else {
-          // admin can only select from their own projects
           const { data: ownedProjects, error: ownedError } = await supabase
             .from('projects')
             .select('id, name')
@@ -77,13 +75,15 @@ export default function CreateTask() {
             .order('name', { ascending: true });
 
           if (ownedError) throw ownedError;
-          setProjects(ownedProjects || []);
+          availableProjects = ownedProjects || [];
         }
 
+        setProjects(availableProjects);
+
         // If pre-selected project is passed in URL query
-        if (initialProjectId) {
-          setSelectedProjectId(initialProjectId);
-          await loadMembersForProject(initialProjectId);
+        if (preselectedProject) {
+          setSelectedProjectId(preselectedProject);
+          await loadMembersForProject(preselectedProject);
         }
       } catch (err) {
         setError(err.message || 'Failed to load projects');
@@ -95,7 +95,7 @@ export default function CreateTask() {
     if (!roleLoading) {
       fetchProjects();
     }
-  }, [navigate, initialProjectId, roleLoading, isMember, role]);
+  }, [navigate, preselectedProject, roleLoading, isMember, role]);
 
   const loadMembersForProject = async (pId) => {
     if (!pId) {
@@ -181,21 +181,23 @@ export default function CreateTask() {
             action: 'Task Created',
             user: 'current user',
             page: 'Create Task',
-            details: `New task created`
+            details: `New task ${taskToken} created`
           })
         });
       } catch { /* ignore */ }
 
       setSuccess(`Task created successfully with token ${taskToken}!`);
 
-      // Reset form after successful submission
+      // Reset form fields
       setTitle('');
       setDescription('');
-      setSelectedProjectId('');
+      if (!preselectedProject) {
+        setSelectedProjectId('');
+        setMembers([]);
+      }
       setAssigneeId('');
       setPriority('medium');
       setDueDate('');
-      setMembers([]);
     } catch (err) {
       setError(err.message || 'Failed to create task');
     } finally {
@@ -215,19 +217,26 @@ export default function CreateTask() {
 
         {/* Back Navigation Button */}
         <div className="flex items-center gap-3">
-          {initialProjectId ? (
+          {preselectedProject ? (
             <Link
-              to={`/project/${initialProjectId}`}
+              to={`/project/${preselectedProject}`}
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:text-white bg-slate-900/60 backdrop-blur-md hover:bg-slate-800/60 rounded-xl transition-all border border-slate-800/60"
             >
               ← Back to Project
             </Link>
-          ) : null}
+          ) : (
+            <Link
+              to="/projects"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:text-white bg-slate-900/60 backdrop-blur-md hover:bg-slate-800/60 rounded-xl transition-all border border-slate-800/60"
+            >
+              ← Back to Projects
+            </Link>
+          )}
           <Link
             to="/dashboard"
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:text-white bg-slate-900/60 backdrop-blur-md hover:bg-slate-800/60 rounded-xl transition-all border border-slate-800/60"
           >
-            ← Back to Dashboard
+            Dashboard
           </Link>
         </div>
       </header>
@@ -250,13 +259,13 @@ export default function CreateTask() {
             </div>
 
             {error && (
-              <div className="mb-6 bg-red-950/25 border border-red-900/50 p-4 rounded-xl text-sm font-semibold text-red-300 flex items-center justify-between gap-3">
+              <div className="mb-6 bg-rose-950/30 border border-rose-900/50 p-4 rounded-xl text-xs font-semibold text-rose-300 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                   <span>⚠️</span> <span>{error}</span>
                 </div>
                 <button
                   onClick={() => setError(null)}
-                  className="text-red-400 hover:text-red-200 text-xs font-bold uppercase tracking-wider cursor-pointer"
+                  className="text-rose-400 hover:text-rose-200 text-xs font-bold uppercase tracking-wider cursor-pointer"
                 >
                   Dismiss
                 </button>
@@ -264,22 +273,42 @@ export default function CreateTask() {
             )}
 
             {success && (
-              <div className="mb-6 bg-emerald-950/25 border border-emerald-900/50 p-4 rounded-xl text-sm font-semibold text-emerald-300 flex items-center gap-2 animate-fade-in-up">
-                <span>✓</span> {success}
+              <div className="mb-6 bg-emerald-950/30 border border-emerald-900/50 p-4 rounded-xl text-xs font-semibold text-emerald-300 flex items-center justify-between gap-2 animate-fade-in-up">
+                <div className="flex items-center gap-2">
+                  <span>✓</span> <span>{success}</span>
+                </div>
+                {preselectedProject && (
+                  <Link
+                    to={`/project/${preselectedProject}`}
+                    className="text-xs font-bold text-emerald-400 hover:underline shrink-0"
+                  >
+                    View in Project →
+                  </Link>
+                )}
               </div>
             )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
               {/* Project Selection */}
               <div>
-                <label htmlFor="project" className="block text-sm font-semibold text-slate-300 mb-2">
-                  Project <span className="text-rose-500">*</span>
-                </label>
+                <div className="flex items-center justify-between mb-2">
+                  <label htmlFor="project" className="block text-sm font-semibold text-slate-300">
+                    Project <span className="text-rose-500">*</span>
+                  </label>
+                  {preselectedProject && (
+                    <span className="text-[11px] font-medium text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded">
+                      Locked to current project
+                    </span>
+                  )}
+                </div>
                 <select
                   id="project"
                   value={selectedProjectId}
+                  disabled={Boolean(preselectedProject)}
                   onChange={(e) => handleProjectChange(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-950/60 border border-slate-800 hover:border-slate-700 focus:border-blue-500/50 rounded-xl text-slate-100 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+                  className={`w-full px-4 py-3 bg-slate-950/60 border border-slate-800 focus:border-blue-500/50 rounded-xl text-slate-100 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
+                    preselectedProject ? 'opacity-70 cursor-not-allowed bg-slate-950/90' : 'cursor-pointer hover:border-slate-700'
+                  }`}
                 >
                   <option value="" className="bg-slate-950 text-slate-100">Select a project</option>
                   {projects.map((project) => (
@@ -298,10 +327,11 @@ export default function CreateTask() {
                 <input
                   id="title"
                   type="text"
+                  required
+                  placeholder="e.g., Design System Migration"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-950/60 border border-slate-800 hover:border-slate-700 focus:border-blue-500/50 rounded-xl text-slate-100 placeholder-slate-500 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  placeholder="e.g. Implement OAuth Flow"
+                  className="w-full px-4 py-3 bg-slate-950/60 border border-slate-800 hover:border-slate-700 focus:border-blue-500/50 rounded-xl text-slate-100 text-sm font-medium placeholder-slate-500 shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                 />
               </div>
 
@@ -312,50 +342,43 @@ export default function CreateTask() {
                 </label>
                 <textarea
                   id="description"
-                  rows={3}
+                  rows={4}
+                  placeholder="Provide detailed context, acceptance criteria, and relevant links..."
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-950/60 border border-slate-800 hover:border-slate-700 focus:border-blue-500/50 rounded-xl text-slate-100 placeholder-slate-500 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                  placeholder="Provide task details and acceptance criteria..."
+                  className="w-full px-4 py-3 bg-slate-950/60 border border-slate-800 hover:border-slate-700 focus:border-blue-500/50 rounded-xl text-slate-100 text-sm font-medium placeholder-slate-500 shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
                 />
               </div>
 
-              {/* Assignee & Priority (Member list shown only after project is selected) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div>
-                  <label htmlFor="assignedTo" className="block text-sm font-semibold text-slate-300 mb-2">
-                    Assign To
-                  </label>
-                  {!selectedProjectId ? (
-                    <div className="px-4 py-3 bg-slate-950/40 border border-dashed border-slate-800 rounded-xl text-slate-500 text-xs font-medium">
-                      Select a project above to view members
-                    </div>
-                  ) : fetchingMembers ? (
-                    <div className="px-4 py-3 bg-slate-950/40 border border-slate-800 rounded-xl text-slate-400 text-xs font-medium flex items-center gap-2">
-                      <div className="w-3.5 h-3.5 border-2 border-slate-600 border-t-blue-500 rounded-full animate-spin"></div>
-                      <span>Loading project members...</span>
-                    </div>
-                  ) : members.length === 0 ? (
-                    <div className="px-4 py-3 bg-slate-950/40 border border-dashed border-slate-800 rounded-xl text-amber-400/80 text-xs font-medium">
-                      No members in this project yet (Unassigned)
-                    </div>
-                  ) : (
-                    <select
-                      id="assignedTo"
-                      value={assigneeId}
-                      onChange={(e) => setAssigneeId(e.target.value)}
-                      className="w-full px-4 py-3 bg-slate-950/60 border border-slate-800 hover:border-slate-700 focus:border-blue-500/50 rounded-xl text-slate-100 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
-                    >
-                      <option value="" className="bg-slate-950 text-slate-100">Unassigned</option>
-                      {members.map((member) => (
-                        <option key={member.user_id} value={member.user_id} className="bg-slate-950 text-slate-100">
-                          {member.users?.full_name || member.users?.email || member.user_id}
-                        </option>
-                      ))}
-                    </select>
-                  )}
-                </div>
+              {/* Assignee Selection */}
+              <div>
+                <label htmlFor="assignee" className="block text-sm font-semibold text-slate-300 mb-2">
+                  Assignee
+                </label>
+                <select
+                  id="assignee"
+                  value={assigneeId}
+                  disabled={fetchingMembers || !selectedProjectId}
+                  onChange={(e) => setAssigneeId(e.target.value)}
+                  className="w-full px-4 py-3 bg-slate-950/60 border border-slate-800 hover:border-slate-700 focus:border-blue-500/50 rounded-xl text-slate-100 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 cursor-pointer"
+                >
+                  <option value="" className="bg-slate-950 text-slate-100">
+                    {!selectedProjectId
+                      ? 'Select a project first'
+                      : fetchingMembers
+                      ? 'Loading members...'
+                      : 'Unassigned'}
+                  </option>
+                  {members.map((member) => (
+                    <option key={member.user_id} value={member.user_id} className="bg-slate-950 text-slate-100">
+                      {member.users?.full_name || member.users?.email} ({member.users?.email})
+                    </option>
+                  ))}
+                </select>
+              </div>
 
+              {/* Priority & Due Date Grid */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
                   <label htmlFor="priority" className="block text-sm font-semibold text-slate-300 mb-2">
                     Priority
@@ -366,41 +389,50 @@ export default function CreateTask() {
                     onChange={(e) => setPriority(e.target.value)}
                     className="w-full px-4 py-3 bg-slate-950/60 border border-slate-800 hover:border-slate-700 focus:border-blue-500/50 rounded-xl text-slate-100 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
                   >
-                    <option value="high" className="bg-slate-950 text-slate-100">High</option>
-                    <option value="medium" className="bg-slate-950 text-slate-100">Medium</option>
-                    <option value="low" className="bg-slate-950 text-slate-100">Low</option>
+                    <option value="low" className="bg-slate-950 text-slate-100">Low Priority</option>
+                    <option value="medium" className="bg-slate-950 text-slate-100">Medium Priority</option>
+                    <option value="high" className="bg-slate-950 text-slate-100">High Priority</option>
                   </select>
+                </div>
+
+                <div>
+                  <label htmlFor="dueDate" className="block text-sm font-semibold text-slate-300 mb-2">
+                    Due Date
+                  </label>
+                  <input
+                    id="dueDate"
+                    type="date"
+                    value={dueDate}
+                    onChange={(e) => setDueDate(e.target.value)}
+                    className="w-full px-4 py-3 bg-slate-950/60 border border-slate-800 hover:border-slate-700 focus:border-blue-500/50 rounded-xl text-slate-100 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+                  />
                 </div>
               </div>
 
-              {/* Due Date */}
-              <div>
-                <label htmlFor="dueDate" className="block text-sm font-semibold text-slate-300 mb-2">
-                  Due Date
-                </label>
-                <input
-                  id="dueDate"
-                  type="date"
-                  value={dueDate}
-                  onChange={(e) => setDueDate(e.target.value)}
-                  className="w-full px-4 py-3 bg-slate-950/60 border border-slate-800 hover:border-slate-700 focus:border-blue-500/50 rounded-xl text-slate-100 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer [color-scheme:dark]"
-                />
-              </div>
-
-              {/* Submit button */}
-              <div className="pt-2">
+              {/* Submit Buttons */}
+              <div className="pt-4 flex items-center justify-end gap-4 border-t border-slate-800/60">
+                <button
+                  type="button"
+                  onClick={() => navigate(preselectedProject ? `/project/${preselectedProject}` : '/projects')}
+                  className="px-5 py-2.5 rounded-xl border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800/50 transition-colors text-sm font-semibold cursor-pointer"
+                >
+                  Cancel
+                </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="w-full flex justify-center items-center py-3 px-4 rounded-xl shadow-lg shadow-blue-500/25 text-sm font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 focus:ring-offset-slate-900 disabled:opacity-60 disabled:cursor-not-allowed transition-all cursor-pointer"
+                  className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-6 py-2.5 rounded-xl shadow-lg shadow-blue-500/25 transition-all text-sm font-semibold cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed hover:scale-[1.02] active:scale-98"
                 >
                   {loading ? (
-                    <div className="flex items-center space-x-2">
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                       <span>Creating Task...</span>
-                    </div>
+                    </>
                   ) : (
-                    'Create Task'
+                    <>
+                      <span>+</span>
+                      <span>Create Task</span>
+                    </>
                   )}
                 </button>
               </div>

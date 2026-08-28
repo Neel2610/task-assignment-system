@@ -4,6 +4,7 @@ import { supabase } from './supabase';
 import { RoleGuard } from './components/RoleGuard';
 import Login from './pages/Login';
 import Dashboard from './pages/Dashboard';
+import AllProjects from './pages/AllProjects';
 import CreateProject from './pages/CreateProject';
 import CreateTask from './pages/CreateTask';
 import KanbanBoard from './pages/KanbanBoard';
@@ -61,6 +62,16 @@ export default function App() {
           element={
             <ProtectedRoute>
               <Dashboard />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* All Projects */}
+        <Route
+          path="/projects"
+          element={
+            <ProtectedRoute>
+              <AllProjects />
             </ProtectedRoute>
           }
         />
