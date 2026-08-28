@@ -4,7 +4,8 @@ import { supabase } from '../supabase';
 import Layout from '../components/Layout';
 
 export default function ProjectDetail() {
-  const { projectId } = useParams();
+  const params = useParams();
+  const projectId = params.id || params.projectId;
   const navigate = useNavigate();
 
   const [project, setProject] = useState(null);
@@ -48,7 +49,7 @@ export default function ProjectDetail() {
       }
 
       // 3. Verify access control: user must be owner OR in project_members
-      let isOwner = projectData.owner_id === user.id;
+      const isOwner = projectData.owner_id === user.id;
       let isMember = false;
 
       const { data: memberRows, error: memberCheckError } = await supabase
@@ -80,7 +81,7 @@ export default function ProjectDetail() {
         setOwner(ownerData || null);
       }
 
-      // 5. Fetch Project Members
+      // 5. Fetch Project Members joined with users
       const { data: membersData, error: membersError } = await supabase
         .from('project_members')
         .select('id, role_in_project, joined_at, users(id, full_name, email)')
@@ -89,7 +90,7 @@ export default function ProjectDetail() {
       if (membersError) throw membersError;
       setMembers(membersData || []);
 
-      // 6. Fetch Project Tasks (scoped to project_id)
+      // 6. Fetch Project Tasks scoped to this project
       const { data: tasksData, error: tasksError } = await supabase
         .from('tasks')
         .select('id, task_token, title, status, priority, due_date, assignee_id, users!assignee_id(full_name)')
@@ -108,6 +109,7 @@ export default function ProjectDetail() {
   const getProjectStatusBadge = (status) => {
     switch (status?.toLowerCase()) {
       case 'active':
+      case 'in_progress':
         return 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20';
       case 'on_hold':
       case 'on hold':
@@ -156,42 +158,46 @@ export default function ProjectDetail() {
     }
   };
 
+  const completedTasksCount = tasks.filter(
+    (t) => (t.status || '').toLowerCase() === 'done' || (t.status || '').toLowerCase() === 'completed'
+  ).length;
+
   return (
     <Layout>
-      <header className="h-16 border-b border-slate-800/60 bg-slate-950/40 backdrop-blur-md px-8 flex items-center justify-between sticky top-0 z-20">
-        <div>
-          <h1 className="text-xl font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent tracking-tight m-0 leading-tight flex items-center gap-3">
+      <header className="h-16 border-b border-slate-800/60 bg-slate-950/40 backdrop-blur-md px-8 flex items-center justify-between sticky top-0 z-20 font-sans">
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent tracking-tight m-0 leading-tight">
             {project?.name || 'Project Details'}
-            {project?.status && (
-              <span
-                className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border capitalize ${getProjectStatusBadge(
-                  project.status
-                )}`}
-              >
-                {project.status.replace('_', ' ')}
-              </span>
-            )}
           </h1>
-          <p className="text-xs text-slate-400 font-medium mt-0.5">Project overview, team members, and tasks</p>
+          {project?.status && (
+            <span
+              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border capitalize ${getProjectStatusBadge(
+                project.status
+              )}`}
+            >
+              {project.status.replace('_', ' ')}
+            </span>
+          )}
         </div>
 
+        {/* Header navigation actions */}
         <div className="flex items-center gap-3">
           <Link
             to="/kanban"
-            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl transition-all shadow-lg shadow-blue-500/25 active:scale-95 cursor-pointer"
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-white bg-slate-800 hover:bg-slate-700 rounded-xl transition-all border border-slate-700"
           >
-            <span>📋</span> Kanban Board
+            <span>📋</span> Task Board
           </Link>
           <Link
             to="/dashboard"
             className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:text-white bg-slate-900/60 backdrop-blur-md hover:bg-slate-800/60 rounded-xl transition-all border border-slate-800/60"
           >
-            ← Back
+            ← Back to Dashboard
           </Link>
         </div>
       </header>
 
-      <main className="p-8 flex-1">
+      <main className="p-8 flex-1 font-sans">
         {error ? (
           <div className="bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-2xl p-8 max-w-xl mx-auto text-center shadow-xl">
             <div className="w-12 h-12 rounded-full bg-red-500/10 text-red-400 flex items-center justify-center text-xl font-bold mx-auto mb-4 border border-red-500/20">
@@ -201,7 +207,7 @@ export default function ProjectDetail() {
             <p className="text-sm text-slate-400 mb-6">{error}</p>
             <button
               onClick={() => navigate('/dashboard')}
-              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-blue-500/25 text-sm font-semibold cursor-pointer"
+              className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white px-5 py-2.5 rounded-xl shadow-lg shadow-blue-500/25 text-xs font-semibold cursor-pointer"
             >
               Return to Dashboard
             </button>
@@ -213,23 +219,39 @@ export default function ProjectDetail() {
           </div>
         ) : (
           <div className="space-y-8 max-w-6xl mx-auto animate-fade-in-up">
-            {/* Project Information Card */}
+            {/* Overview Card */}
             <div className="bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 shadow-xl">
-              <h2 className="text-lg font-bold text-slate-100 mb-2 m-0">About Project</h2>
-              <p className="text-sm text-slate-400 leading-relaxed mb-6">
-                {project?.description || 'No description provided for this project.'}
-              </p>
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 pb-4 mb-4 border-b border-slate-800/60">
+                <div>
+                  <h2 className="text-xl font-bold text-slate-100 m-0">
+                    {project?.name}
+                  </h2>
+                  <p className="text-sm text-slate-400 mt-1 mb-0 leading-relaxed">
+                    {project?.description || 'No description provided for this project.'}
+                  </p>
+                </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t border-slate-800/60 text-xs">
+                <div className="flex items-center gap-3 shrink-0">
+                  <Link
+                    to={`/create-task?projectId=${project?.id}`}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 rounded-xl shadow-lg shadow-blue-500/25 active:scale-95 transition-all cursor-pointer"
+                  >
+                    <span>+</span> Add Task
+                  </Link>
+                </div>
+              </div>
+
+              {/* Stats & Meta info */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-xs pt-2">
                 <div>
                   <span className="text-slate-500 font-medium block mb-1">Project Owner</span>
-                  <span className="font-semibold text-slate-300">
+                  <span className="font-semibold text-slate-200">
                     {owner?.full_name || owner?.email || 'N/A'}
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-500 font-medium block mb-1">Created On</span>
-                  <span className="font-semibold text-slate-300">
+                  <span className="text-slate-500 font-medium block mb-1">Created Date</span>
+                  <span className="font-semibold text-slate-200">
                     {project?.created_at
                       ? new Date(project.created_at).toLocaleDateString(undefined, {
                           month: 'short',
@@ -240,16 +262,26 @@ export default function ProjectDetail() {
                   </span>
                 </div>
                 <div>
-                  <span className="text-slate-500 font-medium block mb-1">Total Members</span>
-                  <span className="font-semibold text-slate-300">{members.length}</span>
+                  <span className="text-slate-500 font-medium block mb-1">Team Members</span>
+                  <span className="font-semibold text-slate-200">
+                    {members.length} {members.length === 1 ? 'member' : 'members'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-slate-500 font-medium block mb-1">Task Progress</span>
+                  <span className="font-semibold text-slate-200">
+                    {completedTasksCount} / {tasks.length} Completed
+                  </span>
                 </div>
               </div>
             </div>
 
-            {/* Members Section */}
+            {/* Team Members Section */}
             <div className="bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 shadow-xl">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-slate-100 m-0">Project Members</h2>
+                <h3 className="text-base font-bold text-slate-100 m-0 flex items-center gap-2">
+                  <span>👥</span> Team Members ({members.length})
+                </h3>
                 <Link
                   to="/add-member"
                   className="text-xs font-semibold text-blue-400 hover:text-blue-300 hover:underline"
@@ -260,13 +292,13 @@ export default function ProjectDetail() {
 
               {members.length === 0 ? (
                 <div className="py-8 text-center bg-slate-950/40 rounded-xl border border-dashed border-slate-800/60">
-                  <p className="text-sm text-slate-500 font-medium m-0">No members in this project yet.</p>
+                  <p className="text-xs text-slate-500 font-medium m-0">No members in this project yet.</p>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-sm">
+                  <table className="w-full text-left border-collapse text-xs">
                     <thead>
-                      <tr className="bg-slate-950/40 border-b border-slate-800/60 text-slate-400 font-semibold uppercase text-xs tracking-wider">
+                      <tr className="bg-slate-950/40 border-b border-slate-800/60 text-slate-400 font-semibold uppercase tracking-wider">
                         <th className="py-3 px-4">Member Name</th>
                         <th className="py-3 px-4">Email</th>
                         <th className="py-3 px-4">Project Role</th>
@@ -283,7 +315,7 @@ export default function ProjectDetail() {
                           </td>
                           <td className="py-3.5 px-4">
                             <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border capitalize ${getProjectRoleBadge(
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border capitalize ${getProjectRoleBadge(
                                 m.role_in_project
                               )}`}
                             >
@@ -298,27 +330,35 @@ export default function ProjectDetail() {
               )}
             </div>
 
-            {/* Tasks Section */}
+            {/* Project Tasks Section */}
             <div className="bg-slate-900/60 backdrop-blur-md border border-slate-800/80 rounded-2xl p-6 shadow-xl">
               <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold text-slate-100 m-0">Project Tasks</h2>
+                <h3 className="text-base font-bold text-slate-100 m-0 flex items-center gap-2">
+                  <span>📝</span> Project Tasks ({tasks.length})
+                </h3>
                 <Link
-                  to="/create-task"
+                  to={`/create-task?projectId=${project?.id}`}
                   className="text-xs font-semibold text-blue-400 hover:text-blue-300 hover:underline"
                 >
-                  + Create Task
+                  + Add Task
                 </Link>
               </div>
 
               {tasks.length === 0 ? (
-                <div className="py-8 text-center bg-slate-950/40 rounded-xl border border-dashed border-slate-800/60">
-                  <p className="text-sm text-slate-500 font-medium m-0">No tasks in this project yet.</p>
+                <div className="py-10 text-center bg-slate-950/40 rounded-xl border border-dashed border-slate-800/60 flex flex-col items-center justify-center">
+                  <p className="text-xs text-slate-500 font-medium mb-3">No tasks in this project yet.</p>
+                  <Link
+                    to={`/create-task?projectId=${project?.id}`}
+                    className="inline-flex items-center gap-1 px-3.5 py-1.5 text-xs font-semibold text-white bg-blue-600 hover:bg-blue-500 rounded-xl shadow-md transition-all cursor-pointer"
+                  >
+                    + Create First Task
+                  </Link>
                 </div>
               ) : (
                 <div className="overflow-x-auto">
-                  <table className="w-full text-left border-collapse text-sm">
+                  <table className="w-full text-left border-collapse text-xs">
                     <thead>
-                      <tr className="bg-slate-950/40 border-b border-slate-800/60 text-slate-400 font-semibold uppercase text-xs tracking-wider">
+                      <tr className="bg-slate-950/40 border-b border-slate-800/60 text-slate-400 font-semibold uppercase tracking-wider">
                         <th className="py-3 px-4">Token</th>
                         <th className="py-3 px-4">Title</th>
                         <th className="py-3 px-4">Status</th>
@@ -331,7 +371,7 @@ export default function ProjectDetail() {
                     <tbody className="divide-y divide-slate-800/60">
                       {tasks.map((task) => (
                         <tr key={task.id} className="hover:bg-slate-900/40 transition-colors">
-                          <td className="py-3.5 px-4 font-mono text-xs font-semibold text-blue-400">
+                          <td className="py-3.5 px-4 font-mono text-[11px] font-semibold text-blue-400">
                             {task.task_token || `TASK-${task.id}`}
                           </td>
                           <td className="py-3.5 px-4 font-bold text-slate-200">
@@ -339,16 +379,16 @@ export default function ProjectDetail() {
                           </td>
                           <td className="py-3.5 px-4">
                             <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border capitalize ${getTaskStatusBadge(
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border capitalize ${getTaskStatusBadge(
                                 task.status
                               )}`}
                             >
-                              {task.status?.replace('_', ' ') || 'todo'}
+                              {task.status ? task.status.replace('_', ' ') : 'todo'}
                             </span>
                           </td>
                           <td className="py-3.5 px-4">
                             <span
-                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold border capitalize ${getPriorityBadge(
+                              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold border capitalize ${getPriorityBadge(
                                 task.priority
                               )}`}
                             >
@@ -358,7 +398,7 @@ export default function ProjectDetail() {
                           <td className="py-3.5 px-4 text-slate-300 font-medium">
                             {task.users?.full_name || 'Unassigned'}
                           </td>
-                          <td className="py-3.5 px-4 text-slate-400 text-xs">
+                          <td className="py-3.5 px-4 text-slate-400">
                             {task.due_date
                               ? new Date(task.due_date).toLocaleDateString(undefined, {
                                   month: 'short',

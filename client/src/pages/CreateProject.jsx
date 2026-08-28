@@ -15,6 +15,13 @@ export default function CreateProject() {
   const [success, setSuccess] = useState(null);
 
   useEffect(() => {
+    if (success) {
+      const timer = setTimeout(() => setSuccess(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [success]);
+
+  useEffect(() => {
     const checkUser = async () => {
       try {
         const { data: { user }, error: userError } = await supabase.auth.getUser();
@@ -34,7 +41,7 @@ export default function CreateProject() {
     setSuccess(null);
 
     if (!title.trim()) {
-      setError('Title cannot be empty');
+      setError('Project title cannot be empty');
       return;
     }
 
@@ -55,8 +62,8 @@ export default function CreateProject() {
         .from('projects')
         .insert([
           {
-            name: title,
-            description,
+            name: title.trim(),
+            description: description.trim(),
             status,
             owner_id: user.id,
           },
@@ -81,15 +88,18 @@ export default function CreateProject() {
           ]);
 
         if (memberError) {
-          throw memberError;
+          console.error('Member insert warning:', memberError);
         }
       }
 
       setSuccess('Project created successfully! Redirecting to dashboard...');
+      setTitle('');
+      setDescription('');
+      setStatus('active');
 
       setTimeout(() => {
         navigate('/dashboard');
-      }, 1500);
+      }, 1200);
     } catch (err) {
       setError(err.message || 'Failed to create project');
     } finally {
@@ -102,32 +112,45 @@ export default function CreateProject() {
       <header className="h-16 border-b border-slate-800/60 bg-slate-950/40 backdrop-blur-md px-8 flex items-center justify-between sticky top-0 z-20 font-sans">
         <div>
           <h1 className="text-xl font-bold bg-gradient-to-r from-white via-slate-200 to-slate-400 bg-clip-text text-transparent tracking-tight m-0 leading-tight">
-            Create Project
+            New Project
           </h1>
-          <p className="text-xs text-slate-400 font-medium mt-0.5 font-sans">Add a new project to your workspace</p>
+          <p className="text-xs text-slate-400 font-medium mt-0.5">Add a new project to your workspace</p>
         </div>
         <Link
           to="/dashboard"
           className="inline-flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-semibold text-slate-300 hover:text-white bg-slate-900/60 backdrop-blur-md hover:bg-slate-800/60 rounded-xl transition-all border border-slate-800/60"
         >
-          ← Back
+          ← Back to Dashboard
         </Link>
       </header>
 
       <main className="p-8 flex-1 flex justify-center items-start font-sans">
         <div className="w-full max-w-2xl bg-slate-900/60 backdrop-blur-md p-8 rounded-2xl shadow-xl border border-slate-800/80 animate-fade-in-up">
-          <h2 className="text-xl font-bold text-white mb-6 m-0 border-b border-slate-800/60 pb-4">
-            Project Details
-          </h2>
+          <div className="flex items-center justify-between border-b border-slate-800/60 pb-4 mb-6">
+            <h2 className="text-xl font-bold text-white m-0">
+              Project Details
+            </h2>
+            <span className="text-xs text-slate-500 font-medium">
+              Fields marked <span className="text-rose-500">*</span> are required
+            </span>
+          </div>
 
           {error && (
-            <div className="mb-6 bg-red-950/20 border border-red-900/50 p-4 rounded-xl text-sm font-semibold text-red-300 flex items-center gap-2">
-              <span>⚠️</span> {error}
+            <div className="mb-6 bg-red-950/25 border border-red-900/50 p-4 rounded-xl text-sm font-semibold text-red-300 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span>⚠️</span> <span>{error}</span>
+              </div>
+              <button
+                onClick={() => setError(null)}
+                className="text-red-400 hover:text-red-200 text-xs font-bold uppercase tracking-wider cursor-pointer"
+              >
+                Dismiss
+              </button>
             </div>
           )}
 
           {success && (
-            <div className="mb-6 bg-emerald-950/20 border border-emerald-900/50 p-4 rounded-xl text-sm font-semibold text-emerald-300 flex items-center gap-2">
+            <div className="mb-6 bg-emerald-950/25 border border-emerald-900/50 p-4 rounded-xl text-sm font-semibold text-emerald-300 flex items-center gap-2 animate-fade-in-up">
               <span>✓</span> {success}
             </div>
           )}
@@ -135,15 +158,15 @@ export default function CreateProject() {
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>
               <label htmlFor="title" className="block text-sm font-semibold text-slate-300 mb-2">
-                Project Title <span className="text-red-500">*</span>
+                Project Title <span className="text-rose-500">*</span>
               </label>
               <input
                 id="title"
                 type="text"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-950/50 border border-slate-800 hover:border-slate-700 focus:border-blue-500/50 rounded-xl text-slate-100 placeholder-slate-500 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                placeholder="e.g. Website Redesign"
+                className="w-full px-4 py-3 bg-slate-950/60 border border-slate-800 hover:border-slate-700 focus:border-blue-500/50 rounded-xl text-slate-100 placeholder-slate-500 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                placeholder="e.g. Mobile App Redesign"
               />
             </div>
 
@@ -156,8 +179,8 @@ export default function CreateProject() {
                 rows={4}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-950/50 border border-slate-800 hover:border-slate-700 focus:border-blue-500/50 rounded-xl text-slate-100 placeholder-slate-500 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
-                placeholder="Write a brief overview of the project..."
+                className="w-full px-4 py-3 bg-slate-950/60 border border-slate-800 hover:border-slate-700 focus:border-blue-500/50 rounded-xl text-slate-100 placeholder-slate-500 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                placeholder="Write a brief overview of the project and goals..."
               />
             </div>
 
@@ -169,7 +192,7 @@ export default function CreateProject() {
                 id="status"
                 value={status}
                 onChange={(e) => setStatus(e.target.value)}
-                className="w-full px-4 py-3 bg-slate-950/50 border border-slate-800 hover:border-slate-700 focus:border-blue-500/50 rounded-xl text-slate-100 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
+                className="w-full px-4 py-3 bg-slate-950/60 border border-slate-800 hover:border-slate-700 focus:border-blue-500/50 rounded-xl text-slate-100 text-sm font-medium shadow-sm transition duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer"
               >
                 <option value="active" className="bg-slate-950 text-slate-100">Active</option>
                 <option value="on_hold" className="bg-slate-950 text-slate-100">On Hold</option>

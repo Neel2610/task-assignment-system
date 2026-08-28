@@ -18,10 +18,10 @@ function ProtectedRoute({ children, allowedRoles }) {
   useEffect(() => {
     let isMounted = true;
 
-    supabase.auth.getUser().then(async ({ data }) => {
+    supabase.auth.getUser().then(async ({ data, error }) => {
       if (!isMounted) return;
 
-      if (!data?.user) {
+      if (error || !data?.user) {
         navigate('/');
         return;
       }
@@ -48,13 +48,13 @@ function ProtectedRoute({ children, allowedRoles }) {
     return () => {
       isMounted = false;
     };
-  }, [navigate]);
+  }, [navigate, allowedRoles]);
 
   if (loading) {
     return (
       <div className="min-h-screen flex flex-col justify-center items-center bg-[#0B0F17] text-slate-300">
         <div className="animate-spin rounded-full h-10 w-10 border-2 border-slate-700 border-t-blue-500 mb-4" />
-        <p className="text-sm font-medium text-slate-400">Loading...</p>
+        <p className="text-sm font-medium text-slate-400">Loading TaskFlow...</p>
       </div>
     );
   }
@@ -69,6 +69,7 @@ export default function App() {
         <Route path="/" element={<Login />} />
         <Route path="/login" element={<Login />} />
         
+        {/* Dashboard */}
         <Route
           path="/dashboard"
           element={
@@ -77,6 +78,8 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* Project Detail Routes */}
         <Route
           path="/project/:projectId"
           element={
@@ -86,6 +89,16 @@ export default function App() {
           }
         />
         <Route
+          path="/project/:id"
+          element={
+            <ProtectedRoute>
+              <ProjectDetail />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Task Detail Route */}
+        <Route
           path="/task/:taskId"
           element={
             <ProtectedRoute>
@@ -93,6 +106,8 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* Create / New Project */}
         <Route
           path="/create-project"
           element={
@@ -102,6 +117,16 @@ export default function App() {
           }
         />
         <Route
+          path="/new-project"
+          element={
+            <ProtectedRoute>
+              <CreateProject />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Create / New Task */}
+        <Route
           path="/create-task"
           element={
             <ProtectedRoute>
@@ -109,6 +134,16 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+        <Route
+          path="/new-task"
+          element={
+            <ProtectedRoute>
+              <CreateTask />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Kanban / Task Board */}
         <Route
           path="/kanban"
           element={
@@ -118,7 +153,25 @@ export default function App() {
           }
         />
         <Route
+          path="/task-board"
+          element={
+            <ProtectedRoute>
+              <KanbanBoard />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Team / Add Member */}
+        <Route
           path="/add-member"
+          element={
+            <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
+              <AddMember />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/team"
           element={
             <ProtectedRoute allowedRoles={['super_admin', 'admin']}>
               <AddMember />
