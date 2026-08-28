@@ -66,7 +66,7 @@ export default function Dashboard() {
         }
       );
 
-      // PROBLEM 1: Fetch owned projects + member projects
+      // Fetch owned projects
       const { data: ownedProjects, error: ownedError } = await supabase
         .from('projects')
         .select('*')
@@ -74,6 +74,7 @@ export default function Dashboard() {
 
       if (ownedError) throw ownedError;
 
+      // Fetch member projects via project_members table
       const { data: memberProjects, error: memberError } = await supabase
         .from('project_members')
         .select('project_id, projects(*)')
@@ -81,14 +82,34 @@ export default function Dashboard() {
 
       if (memberError) throw memberError;
 
+      // Extract projects from memberProjects records
+      let memberProjectList = (memberProjects || [])
+        .map((m) => m.projects)
+        .filter(Boolean);
+
+      // Fallback: If relation join did not populate, fetch using project_id values
+      if (memberProjectList.length === 0 && memberProjects && memberProjects.length > 0) {
+        const memberProjectIds = memberProjects.map((m) => m.project_id).filter(Boolean);
+        if (memberProjectIds.length > 0) {
+          const { data: directMemberProjects } = await supabase
+            .from('projects')
+            .select('*')
+            .in('id', memberProjectIds);
+
+          if (directMemberProjects) {
+            memberProjectList = directMemberProjects;
+          }
+        }
+      }
+
+      // Combine both arrays and remove duplicates by project id
       const allProjects = [
         ...(ownedProjects || []),
-        ...(memberProjects?.map((m) => m.projects).filter(Boolean) || []),
+        ...memberProjectList,
       ];
 
-      // Remove duplicates by id
       const uniqueProjects = allProjects.filter(
-        (p, i, arr) => arr.findIndex((x) => x.id === p.id) === i
+        (p, i, arr) => p && p.id && arr.findIndex((x) => x && x.id === p.id) === i
       );
 
       setProjects(uniqueProjects);
